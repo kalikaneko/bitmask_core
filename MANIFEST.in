@@ -1,0 +1,2 @@
+include versioneer.py
+include src/leap/bitmask_core/_version.py
