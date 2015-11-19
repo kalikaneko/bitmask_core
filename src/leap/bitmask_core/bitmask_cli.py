@@ -35,20 +35,42 @@ description = (Fore.YELLOW + 'Manage and configure a Bitmask/LEAP Account. '
                Fore.RESET)
 
 parser = argparse.ArgumentParser(description=description)
-parser.add_argument("--stats", dest="do_stats", action="store_true",
-                    help="print service stats")
+
+# ---- Services ---------------------------------------------------
+parser.add_argument("service", type=str,
+                    choices=('user', 'eip', 'mail', 'backend'))
+
+# ---- All services -----------------------------------------------
+
+parser.add_argument("--start")
+parser.add_argument("--stop")
+parser.add_argument("--status")
+
+# ----- User ------------------------------------------------------
+
 parser.add_argument("--signup", action="store_true", dest="do_signup",
                     help="signup new user")
 parser.add_argument("--auth", dest="do_auth", action="store_true",
                     help="authenticate the passed user")
-parser.add_argument("--logout", dest="do_logout", action="store_true",
+parser.add_argument("--logout", dest="logout",
                     help="logout this user")
-parser.add_argument("--username", dest="username",
-                    help="user to operate with")
-parser.add_argument("--shutdown", dest="do_shutdown", action="store_true",
-                    help="shutdown the bonafide service.")
 
-# XXX DEBUG --------------------------------------------------------
+# XXX maybe not a separate argument!
+parser.add_argument("-u", "--username", dest="username",
+                    help="user to operate with")
+
+# ----- Backend ---------------------------------------------------
+
+parser.add_argument("--shutdown", dest="do_shutdown", action="store_true",
+                    help="shutdown the bitmaskd daemon.")
+parser.add_argument("--stats", dest="do_stats", action="store_true",
+                    help="print bitmaskd service stats")
+parser.add_argument("--version", dest="do_version", action="store_true",
+                    help="version info")
+
+
+
+# XXX EXTRA --------------------------------------------------------
 parser.add_argument("--debug", dest="do_debug", action="store_true",
                     help="debug command, can be anything")
 # ------------------------------------------------------------------
