@@ -40,22 +40,20 @@ class BitmaskCLI(object):
 
 Controls the Bitmask application.
 
-Valid commands operate upon the different services:
+SERVICE COMMANDS:
 
    user       Handles Bitmask accounts
    mail       Bitmask Encrypted Mail
    eip        Encrypted Internet Proxy
 
-You can get specific help about each of the services. For instance:
-
-   bitmask_cli user --help
-
-The following commands are general for the Bitmask application itself:
+GENERAL COMMANDS:
 
    version    prints version number and exit
    shutdown   shutdown Bitmask backend daemon
    status     displays general status about the running Bitmask services
-''')
+
+''', epilog=("Use 'bitmask_cli <command> --help' to learn more "
+             "about each command."))
         parser.add_argument('command', help='Subcommand to run')
 
         # parse_args defaults to [1:] for args, but you need to
