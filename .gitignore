@@ -60,3 +60,8 @@ docs/_build/
 
 # PyBuilder
 target/
+
+*.pid
+
+*.swo
+*.swp
