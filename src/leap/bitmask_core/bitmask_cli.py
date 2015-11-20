@@ -22,6 +22,7 @@ import sys
 import getpass
 import argparse
 
+
 from colorama import init as color_init
 from colorama import Fore
 from twisted.internet import reactor
@@ -30,51 +31,100 @@ import zmq
 
 from leap.bonafide import config
 
-description = (Fore.YELLOW + 'Manage and configure a Bitmask/LEAP Account. '
-               'This client connects to a running bitmaskd service.' +
-               Fore.RESET)
 
-parser = argparse.ArgumentParser(description=description)
+class BitmaskCLI(object):
 
-# ---- Services ---------------------------------------------------
-parser.add_argument("service", type=str,
-                    choices=('user', 'eip', 'mail', 'backend'))
+    def __init__(self):
+        parser = argparse.ArgumentParser(
+            usage='''bitmask_cli <command> [<args>]
 
-# ---- All services -----------------------------------------------
+Controls the Bitmask application.
 
-parser.add_argument("--start")
-parser.add_argument("--stop")
-parser.add_argument("--status")
+Valid commands operate upon the different services:
 
-# ----- User ------------------------------------------------------
+   user       Handles Bitmask accounts
+   mail       Bitmask Encrypted Mail
+   eip        Encrypted Internet Proxy
 
-parser.add_argument("--signup", action="store_true", dest="do_signup",
-                    help="signup new user")
-parser.add_argument("--auth", dest="do_auth", action="store_true",
-                    help="authenticate the passed user")
-parser.add_argument("--logout", dest="logout",
-                    help="logout this user")
+You can get specific help about each of the services. For instance:
 
-# XXX maybe not a separate argument!
-parser.add_argument("-u", "--username", dest="username",
-                    help="user to operate with")
+   bitmask_cli user --help
 
-# ----- Backend ---------------------------------------------------
+The following commands are general for the Bitmask application itself:
 
-parser.add_argument("--shutdown", dest="do_shutdown", action="store_true",
-                    help="shutdown the bitmaskd daemon.")
-parser.add_argument("--stats", dest="do_stats", action="store_true",
-                    help="print bitmaskd service stats")
-parser.add_argument("--version", dest="do_version", action="store_true",
-                    help="version info")
+   version    prints version number and exit
+   shutdown   shutdown Bitmask backend daemon
+   status     displays general status about the running Bitmask services
+''')
+        parser.add_argument('command', help='Subcommand to run')
 
+        # parse_args defaults to [1:] for args, but you need to
+        # exclude the rest of the args too, or validation will fail
+        args = parser.parse_args(sys.argv[1:2])
+        self.args = args
+        self.subargs = None
 
+        if not hasattr(self, args.command):
+            print 'Unrecognized command'
+            parser.print_help()
+            exit(1)
 
-# XXX EXTRA --------------------------------------------------------
-parser.add_argument("--debug", dest="do_debug", action="store_true",
-                    help="debug command, can be anything")
-# ------------------------------------------------------------------
-ns = parser.parse_args()
+        # use dispatch pattern to invoke method with same name
+        getattr(self, args.command)()
+
+    def user(self):
+        parser = argparse.ArgumentParser(
+            description=('Handles Bitmask accounts: creation, authentication and '
+                         'modification'),
+            prog='bitmask_cli user')
+        parser.add_argument('--create', action='store_true',
+                            help='register a new user, if possible')
+        parser.add_argument('--authenticate', action='store_true',
+                            help='logs in against the provider')
+        parser.add_argument('--logout', action='store_true',
+                            help='ends any active session with the provider')
+        parser.add_argument('username', help='username ID, in the form <user@example.org>')
+        # now that we're inside a subcommand, ignore the first
+        # TWO argvs, ie the command (bitmask_cli) and the subcommand (user)
+        args = parser.parse_args(sys.argv[2:])
+        self.subargs = args
+
+    def mail(self):
+        parser = argparse.ArgumentParser(
+            description='Bitmask Encrypted Mail service',
+            prog='bitmask_cli mail')
+        parser.add_argument('--start', action='store_true',
+                            help='tries to start the mail service')
+        parser.add_argument('--stop', action='store_true',
+                            help='stops the mail service if running')
+        parser.add_argument('--status', action='store_true',
+                            help='displays status about the mail service')
+        args = parser.parse_args(sys.argv[2:])
+        self.subargs = args
+
+    def eip(self):
+        parser = argparse.ArgumentParser(
+            description='Encrypted Internet Proxy service',
+            prog='bitmask_cli eip')
+        parser.add_argument('--start', help='Start service')
+        parser.add_argument('--stop', help='Stop service')
+        parser.add_argument('--status', help='Display status about service')
+        args = parser.parse_args(sys.argv[2:])
+        self.subargs = args
+
+    # Single commands
+
+    def shutdown(self):
+        pass
+
+    def status(self):
+        pass
+
+    def version(self):
+        pass
+
+    def debug(self):
+        pass
 
 
 def get_zmq_connection():
@@ -83,49 +133,56 @@ def get_zmq_connection():
     return ZmqREQConnection(zf, e)
 
 
-def error(msg):
+def error(msg, stop=False):
     print Fore.RED + "[!] %s" % msg + Fore.RESET
-    sys.exit(1)
-
-if len(sys.argv) < 2:
-    error("Too few arguments. Try %s --help" % sys.argv[0])
-
-
-if (ns.do_signup or ns.do_auth or ns.do_logout) and not ns.username:
-    error(Fore.RED + "Need to pass a username for signup/auth/logout" +
-          Fore.RESET)
-
-if ns.username and '@' not in ns.username:
-    error(Fore.RED + "Username must be in the form user@provider" + Fore.RESET)
-
+    if stop:
+        reactor.stop()
+    else:
+        sys.exit(1)
 
 def do_print(stuff):
     print Fore.GREEN + stuff[0] + Fore.RESET
 
 
-def send_command():
+def send_command(cli):
 
+    args = cli.args
+    subargs = cli.subargs
     cb = do_print
-    if ns.do_shutdown:
-        data = ("shutdown",)
 
-    elif ns.do_stats:
+    cmd = args.command
+
+    if cmd == 'version':
+        do_print(['bitmask_cli: 0.0.1'])
+        reactor.stop()
+        return
+
+    elif cmd == 'status':
         data = ("stats",)
 
-    elif ns.do_signup:
-        passwd = getpass.getpass()
-        data = ("signup", ns.username, passwd)
-
-    elif ns.do_auth:
-        passwd = getpass.getpass()
-        data = ("authenticate", ns.username, passwd)
-
-    elif ns.do_logout:
-        passwd = getpass.getpass()
-        data = ("logout", ns.username, passwd)
-
-    elif ns.do_debug:
+    elif cmd == 'shutdown':
+        data = ("shutdown",)
+    
+    elif cmd == 'debug':
         data = ("get_soledad",)
+
+    elif cmd == 'user':
+        username = subargs.username
+        if '@' not in username:
+            error("Username ID must be in the form <user@example.org>",
+                  stop=True)
+            return
+        # TODO check that ONLY ONE FLAG is True
+        # TODO check that AT LEAST ONE FLAG is True
+        
+        passwd = getpass.getpass()
+
+        if subargs.create:
+            data = ("signup", username, passwd)
+        if subargs.authenticate:
+            data = ("authenticate", username, passwd)
+        if subargs.logout:
+            data = ("logout", username, passwd)
 
     s = get_zmq_connection()
     try:
@@ -138,9 +195,9 @@ def send_command():
 
 def main():
     color_init()
-    reactor.callWhenRunning(reactor.callLater, 0, send_command)
+    cli = BitmaskCLI()
+    reactor.callWhenRunning(reactor.callLater, 0, send_command, cli)
     reactor.run()
 
 if __name__ == "__main__":
     main()
-
