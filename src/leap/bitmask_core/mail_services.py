@@ -31,7 +31,7 @@ class HookableService(object):
 
     """
     This service allows for other services to be notified
-    whenever a certain kind of hook happens.
+    whenever a certain kind of hook is triggered.
 
     During the service composition, one is expected to register
     a kind of hook with the service that wants to react to the triggering of
@@ -42,11 +42,11 @@ class HookableService(object):
     this to another mechanism like leap.common.events, callbacks etc.
     """
 
-    def register_hook(self, kind, service):
+    def register_hook(self, kind, trigger):
         if not hasattr(self, 'service_hooks'):
             self.service_hooks = {}
-        log.msg("Registering hook %s->%s" % (kind, service))
-        self.service_hooks[kind] = service
+        log.msg("Registering hook %s->%s" % (kind, trigger))
+        self.service_hooks[kind] = trigger
 
     def get_sibling_service(self, kind):
         return self.parent.getServiceNamed(kind)
@@ -64,6 +64,13 @@ class HookableService(object):
         getattr(self, 'hook_' + kind)(**kw)
 
 
+def notify_hooked_services(this_hook, this_service, **data):
+    hooked_service = this_service.get_hooked_service(this_hook)
+    if hooked_service:
+        hooked_service.notify_hook(
+            this_hook, **data)
+
+
 class SoledadContainer(Container):
 
     def add_instance(self, userid, token, uuid):
@@ -77,18 +84,12 @@ class SoledadContainer(Container):
             os.path.expanduser(
                 '~/.config/leap/providers/%s/keys/ca/cacert.pem' % provider),
             token)
-        print "ADDING SOLEDAD INSTANCE FOR", userid
         self._instances[userid] = soledad
 
-        # TODO --- factor out signal_hooked_service(*args, **kw)
         this_hook = 'on_new_soledad_instance'
-        hooked_service = self.service.get_hooked_service(this_hook)
-        if hooked_service:
-            hooked_service.notify_hook(
-                this_hook,
-                user=userid, uuid=uuid, token=token,
-                soledad=soledad)
-        # TODO --- factor out
+        data = {'user': userid, 'uuid': uuid, 'token': token,
+                'soledad': soledad}
+        notify_hooked_services(this_hook, self.service, **data)
 
     def set_syncable(self, user, state):
         pass
@@ -104,7 +105,6 @@ class SoledadContainer(Container):
         local_db_path = os.path.join(
             basedir, '%s.db' % uuid)
 
-        # instantiate soledad
         return Soledad(
             uuid,
             unicode(passphrase),
@@ -124,6 +124,8 @@ class SoledadService(service.Service, HookableService):
         self._container = SoledadContainer()
         self._container.service = self
         super(SoledadService, self).startService()
+
+    # hooks
 
     def hook_on_bonafide_auth(self, **kw):
         user = kw['username']
@@ -154,13 +156,8 @@ class KeymanagerContainer(Container):
         # TODO use onready-deferreds instead
 
         this_hook = 'on_new_keymanager_instance'
-        hooked_service = self.service.get_hooked_service(this_hook)
-        if hooked_service:
-            hooked_service.notify_hook(
-                this_hook,
-                userid=userid,
-                soledad=soledad,
-                keymanager=keymanager)
+        data = {'userid': userid, 'soledad': soledad, 'keymanager': keymanager}
+        notify_hooked_services(this_hook, self.service, **data)
 
     def _create_keymanager_instance(self, userid, token, uuid, soledad):
         user, provider = userid.split('@')
@@ -193,6 +190,8 @@ class KeymanagerService(service.Service, HookableService):
         self._container = KeymanagerContainer()
         self._container.service = self
         super(KeymanagerService, self).startService()
+
+    # hooks
 
     def hook_on_new_soledad_instance(self, **kw):
         container = self._container
@@ -229,10 +228,14 @@ class StandardMailService(service.MultiService, HookableService):
 
     subscribed_to_hooks = ('on_new_keymanager_instance',)
 
+    def __init__(self):
+        super(StandardMailService, self).__init__()
+        self.initializeChildrenServices()
+
     def initializeChildrenServices(self):
+        self.addService(IncomingMailService())
         self.addService(IMAPService())
         self.addService(SMTPService())
-        self.addService(IncomingMailService())
 
     def startService(self):
         print "Starting Mail Service..."
@@ -242,14 +245,6 @@ class StandardMailService(service.MultiService, HookableService):
 
     def stopService(self):
         super(StandardMailService, self).stopService()
-
-    def hook_on_new_keymanager_instance(self, **kw):
-        # XXX we can specify this as a waterfall, or just AND the two
-        # conditions.
-        userid = kw['userid']
-        soledad = kw['soledad']
-        keymanager = kw['keymanager']
-        self.startInstance(userid, soledad, keymanager)
 
     def startInstance(self, userid, soledad, keymanager):
         imap = self.getServiceNamed('imap')
@@ -261,6 +256,16 @@ class StandardMailService(service.MultiService, HookableService):
 
         incoming = self.getServiceNamed('incoming_mail')
         incoming.startInstance(keymanager, soledad, imap_factory, userid)
+
+    # hooks
+
+    def hook_on_new_keymanager_instance(self, **kw):
+        # XXX we can specify this as a waterfall, or just AND the two
+        # conditions.
+        userid = kw['userid']
+        soledad = kw['soledad']
+        keymanager = kw['keymanager']
+        self.startInstance(userid, soledad, keymanager)
 
 
 class IMAPService(service.Service):
@@ -275,6 +280,7 @@ class IMAPService(service.Service):
     # has been authenticated) should expose a dummy IMAP account.
 
     def __init__(self):
+        super(IMAPService, self).__init__()
         self._instances = {}
 
     def startService(self):
@@ -311,6 +317,7 @@ class SMTPService(service.Service):
     # TODO -- the offline service (ie, until BONAFIDE REMOTE
     # has been authenticated) should expose a dummy SMTP account.
     def __init__(self):
+        super(SMTPService, self).__init__()
         self._instances = {}
 
     def startService(self):
@@ -354,6 +361,7 @@ class IncomingMailService(service.Service):
     name = 'incoming_mail'
 
     def __init__(self):
+        super(IncomingMailService, self).__init__()
         self._instances = {}
 
     def startService(self):
@@ -371,6 +379,7 @@ class IncomingMailService(service.Service):
     # multi-tenant service inside the leap.mail.incoming.service.
 
     def startInstance(self, keymanager, soledad, imap_factory, userid):
+        print "Starting instance for %s" % userid
         self._start_incoming_mail_instance(
             keymanager, soledad, imap_factory, userid)
 
@@ -400,4 +409,5 @@ class IncomingMailService(service.Service):
         d = acc.callWhenReady(lambda _: acc.getMailbox(INBOX_NAME))
         d.addCallback(setUpIncomingMail)
         d.addCallback(registerInstance)
+        d.addErrback(lambda f: log.err(f))
         return d
