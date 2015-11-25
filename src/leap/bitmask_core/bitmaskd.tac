@@ -12,6 +12,9 @@ bonafide_zmq_service = BonafideZMQService()
 bonafide_zmq_service.setServiceParent(top_service)
 bonafide_zmq_service.register_hook('on_bonafide_auth', trigger='soledad')
 
+# TODO -- IF EIP IS ENABLED:
+
+# TODO -- IF MAIL IS ENABLED:
 soledad_service = mail_services.SoledadService()
 soledad_service.setName("soledad")
 soledad_service.setServiceParent(top_service)
