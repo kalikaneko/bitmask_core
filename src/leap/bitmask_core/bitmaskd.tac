@@ -22,8 +22,9 @@ keymanager_service.setName("keymanager")
 keymanager_service.setServiceParent(top_service)
 keymanager_service.register_hook('on_new_keymanager_instance', 'mail')
 
-mail_service = mail_services.MailService()
+mail_service = mail_services.StandardMailService()
 mail_service.setName("mail")
+mail_service.initializeChildrenServices()
 mail_service.setServiceParent(top_service)
 
 application = service.Application("bitmaskd")

@@ -1,8 +1,8 @@
 """
 Mail services.
 
-This is quite moving work still. This could be moved to the different packages
-when it stabilizes.
+This is quite moving work still.
+This should be moved to the different packages when it stabilizes.
 """
 import os
 from collections import defaultdict
@@ -12,7 +12,10 @@ from twisted.python import log
 
 from leap.keymanager import KeyManager
 from leap.soledad.client.api import Soledad
+from leap.mail.constants import INBOX_NAME
 from leap.mail.imap.service import imap
+from leap.mail.incoming.service import IncomingMail, INCOMING_CHECK_PERIOD
+from leap.mail.smtp import setup_smtp_gateway
 
 
 class Container(object):
@@ -69,6 +72,7 @@ class SoledadContainer(Container):
         print "ADDING SOLEDAD INSTANCE FOR", userid
         self._instances[userid] = soledad
 
+        # TODO --- factor out signal_hooked_service(*args, **kw)
         this_hook = 'on_new_soledad_instance'
         hooked_service = self.service.get_hooked_service(this_hook)
         if hooked_service:
@@ -76,6 +80,7 @@ class SoledadContainer(Container):
                 this_hook,
                 user=userid, uuid=uuid, token=token,
                 soledad=soledad)
+        # TODO --- factor out
 
     def set_syncable(self, user, state):
         pass
@@ -111,6 +116,7 @@ class SoledadService(service.Service, HookableService):
         print "Starting Soledad Service"
         self._container = SoledadContainer()
         self._container.service = self
+        super(SoledadService, self).startService()
 
     def activate_hook(self, kind, **kw):
         if kind == 'on_bonafide_auth':
@@ -147,7 +153,8 @@ class KeymanagerContainer(Container):
             hooked_service.activate_hook(
                 this_hook,
                 userid=userid,
-                soledad=soledad)
+                soledad=soledad,
+                keymanager=keymanager)
 
     def _create_keymanager_instance(self, userid, token, uuid, soledad):
         user, provider = userid.split('@')
@@ -179,6 +186,7 @@ class KeymanagerService(service.Service, HookableService):
         print "Starting Keymanager Service"
         self._container = KeymanagerContainer()
         self._container.service = self
+        super(KeymanagerService, self).startService()
 
     def activate_hook(self, kind, **kw):
         if kind == 'on_new_soledad_instance':
@@ -191,19 +199,167 @@ class KeymanagerService(service.Service, HookableService):
                 container.add_instance(user, token, uuid, soledad)
 
 
-class MailService(service.Service, HookableService):
+"""
+The Standard Mail Service is a collection of Services.
+
+The parent service launches 3 different services that expose Encrypted Mail
+Capabilities on specific ports:
+
+    - SMTP service, on port 2013
+    - IMAP service, on port 1984
+    - The IncomingMail Service, which doesn't listen on any port, but
+      watches and processes the Incoming Queue and saves the processed mail
+      into the matching INBOX.
+"""
+
+
+class MailAccountContainer(Container):
+
+    def add_instance(self, userid, soledad, keymanager):
+        pass
+
+
+class StandardMailService(service.MultiService, HookableService):
 
     # TODO move activate_hook to a dispatcher pattern + class attribute
     # TODO factor out Mail Service to inside mail package.
 
+    def initializeChildrenServices(self):
+        self.addService(IMAPService())
+        self.addService(SMTPService())
+        self.addService(IncomingMailService())
+
     def startService(self):
         print "Starting Mail Service..."
+        self._container = MailAccountContainer()
+        self._container.service = self
+        super(StandardMailService, self).startService()
+
+    def stopService(self):
+        super(StandardMailService, self).stopService()
 
     def activate_hook(self, kind, **kw):
         # XXX we can specify this as a waterfall, or just AND the two
         # conditions.
         if kind == 'on_new_keymanager_instance':
-            print "STARTING MAIL SERVICE"
             soledad = kw['soledad']
-            user = kw['userid']
-            imap.run_service(soledad, userid=user)
+            keymanager = kw['keymanager']
+            userid = kw['userid']
+
+            imap = self.getServiceNamed('imap')
+            imap.startInstance(soledad, userid)
+
+            smtp = self.getServiceNamed('smtp')
+            smtp.startInstance(keymanager, userid)
+
+
+class IMAPService(service.Service):
+
+    name = 'imap'
+
+    # TODO --- this needs to allow authentication,
+    # to be able to expose the SAME service for different
+    # accounts.
+
+    # TODO -- the offline service (ie, until BONAFIDE REMOTE
+    # has been authenticated) should expose a dummy IMAP account.
+
+    def __init__(self):
+        self._instances = {}
+
+    def startService(self):
+        print "Starting dummy IMAP Service"
+        super(IMAPService, self).startService()
+
+    def stopService(self):
+        # TODO cleanup all instances
+        super(IMAPService, self).stopService()
+
+    # Individual accounts
+
+    def startInstance(self, soledad, userid):
+        port, factory = imap.run_service(soledad, userid=userid)
+        self._instances[userid] = port, factory
+
+    def stopInstance(self, userid):
+        port, factory = self._instances[userid]
+        port.stopListening()
+        factory.doStop()
+
+
+class SMTPService(service.Service):
+
+    name = 'smtp'
+
+    # TODO --- this needs to allow authentication,
+    # to be able to expose the SAME service for different
+    # accounts.
+
+    # TODO -- the offline service (ie, until BONAFIDE REMOTE
+    # has been authenticated) should expose a dummy SMTP account.
+    def __init__(self):
+        self._instances = {}
+
+    def startService(self):
+        print "Starting dummy SMTP Service"
+        super(SMTPService, self).startService()
+
+    def stopService(self):
+        # TODO cleanup all instances
+        super(SMTPService, self).stopService()
+
+    # Individual accounts
+
+    def startInstance(self, keymanager, userid):
+        # TODO automate bootstrapping stuff
+        # TODO consolidate canonical factory
+        user, provider = userid.split('@')
+        host = 'cowbird.cdev.bitmask.net'
+        remote_port = 465
+        client_cert_path = os.path.expanduser(
+            '~/.config/leap/providers/dev.bitmask.net/'
+            'keys/client/stmp_%s.pem' % user)
+        service, port = setup_smtp_gateway(
+            port=2013,
+            userid=userid,
+            keymanager=keymanager,
+            smtp_host=host,
+            smtp_port=remote_port,
+            smtp_cert=unicode(client_cert_path),
+            smtp_key=unicode(client_cert_path),
+            encrypted_only=False)
+        self._instances[userid] = service, port
+
+    def stopInstance(self, userid):
+        port, factory = self._instances[userid]
+        port.stopListening()
+        factory.doStop()
+
+
+class IncomingMailService(service.Service):
+
+    name = 'incoming_mail'
+
+    def startService(self):
+        print "Starting dummy IncomingMail Service"
+        super(IncomingMailService, self).startService()
+
+    def stopService(self):
+        super(IncomingMailService, self).stopService()
+
+    def _start_incoming_mail_service(self, keymanager, soledad,
+        imap_factory, userid):
+
+        def setUpIncomingMail(inbox):
+            incoming_mail = IncomingMail(
+                keymanager,
+                soledad,
+                inbox.collection,
+                userid,
+                check_period=INCOMING_CHECK_PERIOD)
+            return incoming_mail
+
+        acc = imap_factory.theAccount
+        d = acc.callWhenReady(lambda _: acc.getMailbox(INBOX_NAME))
+        d.addCallback(setUpIncomingMail)
+        return d
