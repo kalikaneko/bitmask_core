@@ -35,7 +35,8 @@ class HookableService(object):
 
     During the service composition, one is expected to register
     a kind of hook with the service that wants to react to the triggering of
-    the hook. On that service, the method "activate_hook" will be called.
+    the hook. On that service, the method "notify_hook" will be called,
+    which will be in turn dispatched to the method "hook_<name>".
 
     This is a simplistic implementation for a PoC, we probably will move
     this to another mechanism like leap.common.events, callbacks etc.
@@ -54,6 +55,13 @@ class HookableService(object):
         hooks = self.service_hooks
         if kind in hooks:
             return self.get_sibling_service(hooks[kind])
+
+    def notify_hook(self, kind, **kw):
+        if kind not in self.subscribed_to_hooks:
+            raise RuntimeError(
+                "Tried to notify a hook this class is not "
+                "subscribed to" % self.__class__)
+        getattr(self, 'hook_' + kind)(**kw)
 
 
 class SoledadContainer(Container):
@@ -76,7 +84,7 @@ class SoledadContainer(Container):
         this_hook = 'on_new_soledad_instance'
         hooked_service = self.service.get_hooked_service(this_hook)
         if hooked_service:
-            hooked_service.activate_hook(
+            hooked_service.notify_hook(
                 this_hook,
                 user=userid, uuid=uuid, token=token,
                 soledad=soledad)
@@ -107,10 +115,9 @@ class SoledadContainer(Container):
             auth_token=token,
             defer_encryption=True)
 
-
 class SoledadService(service.Service, HookableService):
 
-    # TODO move activate_hook to a dispatcher pattern + class attribute
+    subscribed_to_hooks = ('on_bonafide_auth', )
 
     def startService(self):
         print "Starting Soledad Service"
@@ -118,16 +125,15 @@ class SoledadService(service.Service, HookableService):
         self._container.service = self
         super(SoledadService, self).startService()
 
-    def activate_hook(self, kind, **kw):
-        if kind == 'on_bonafide_auth':
-            user = kw['username']
-            uuid = kw['uuid']
-            token = kw['token']
-            container = self._container
-            if not container.get_instance(user):
-                print "Going to instantiate a new soledad %s %s %s" % (
-                    user, token, uuid)
-                container.add_instance(user, token, uuid)
+    def hook_on_bonafide_auth(self, **kw):
+        user = kw['username']
+        uuid = kw['uuid']
+        token = kw['token']
+        container = self._container
+        if not container.get_instance(user):
+            print "Going to instantiate a new soledad %s %s %s" % (
+                user, token, uuid)
+            container.add_instance(user, token, uuid)
 
 
 class KeymanagerContainer(Container):
@@ -150,7 +156,7 @@ class KeymanagerContainer(Container):
         this_hook = 'on_new_keymanager_instance'
         hooked_service = self.service.get_hooked_service(this_hook)
         if hooked_service:
-            hooked_service.activate_hook(
+            hooked_service.notify_hook(
                 this_hook,
                 userid=userid,
                 soledad=soledad,
@@ -180,7 +186,7 @@ class KeymanagerContainer(Container):
 
 class KeymanagerService(service.Service, HookableService):
 
-    # TODO move activate_hook to a dispatcher pattern + class attribute
+    subscribed_to_hooks = ('on_new_soledad_instance',)
 
     def startService(self):
         print "Starting Keymanager Service"
@@ -188,29 +194,15 @@ class KeymanagerService(service.Service, HookableService):
         self._container.service = self
         super(KeymanagerService, self).startService()
 
-    def activate_hook(self, kind, **kw):
-        if kind == 'on_new_soledad_instance':
-            container = self._container
-            user = kw['user']
-            token = kw['token']
-            uuid = ['uuid']
-            soledad = kw['soledad']
-            if not container.get_instance(user):
-                container.add_instance(user, token, uuid, soledad)
+    def hook_on_new_soledad_instance(self, **kw):
+        container = self._container
+        user = kw['user']
+        token = kw['token']
+        uuid = ['uuid']
+        soledad = kw['soledad']
+        if not container.get_instance(user):
+            container.add_instance(user, token, uuid, soledad)
 
-
-"""
-The Standard Mail Service is a collection of Services.
-
-The parent service launches 3 different services that expose Encrypted Mail
-Capabilities on specific ports:
-
-    - SMTP service, on port 2013
-    - IMAP service, on port 1984
-    - The IncomingMail Service, which doesn't listen on any port, but
-      watches and processes the Incoming Queue and saves the processed mail
-      into the matching INBOX.
-"""
 
 
 class MailAccountContainer(Container):
@@ -220,9 +212,22 @@ class MailAccountContainer(Container):
 
 
 class StandardMailService(service.MultiService, HookableService):
+    """
+    A collection of Services.
 
-    # TODO move activate_hook to a dispatcher pattern + class attribute
+    This is the parent service, that launches 3 different services that expose
+    Encrypted Mail Capabilities on specific ports:
+
+        - SMTP service, on port 2013
+        - IMAP service, on port 1984
+        - The IncomingMail Service, which doesn't listen on any port, but
+          watches and processes the Incoming Queue and saves the processed mail
+          into the matching INBOX.
+    """
+
     # TODO factor out Mail Service to inside mail package.
+
+    subscribed_to_hooks = ('on_new_keymanager_instance',)
 
     def initializeChildrenServices(self):
         self.addService(IMAPService())
@@ -238,19 +243,18 @@ class StandardMailService(service.MultiService, HookableService):
     def stopService(self):
         super(StandardMailService, self).stopService()
 
-    def activate_hook(self, kind, **kw):
+    def hook_on_new_keymanager_instance(self, **kw):
         # XXX we can specify this as a waterfall, or just AND the two
         # conditions.
-        if kind == 'on_new_keymanager_instance':
-            soledad = kw['soledad']
-            keymanager = kw['keymanager']
-            userid = kw['userid']
+        soledad = kw['soledad']
+        keymanager = kw['keymanager']
+        userid = kw['userid']
 
-            imap = self.getServiceNamed('imap')
-            imap.startInstance(soledad, userid)
+        imap = self.getServiceNamed('imap')
+        imap.startInstance(soledad, userid)
 
-            smtp = self.getServiceNamed('smtp')
-            smtp.startInstance(keymanager, userid)
+        smtp = self.getServiceNamed('smtp')
+        smtp.startInstance(keymanager, userid)
 
 
 class IMAPService(service.Service):
@@ -348,7 +352,7 @@ class IncomingMailService(service.Service):
         super(IncomingMailService, self).stopService()
 
     def _start_incoming_mail_service(self, keymanager, soledad,
-        imap_factory, userid):
+                                     imap_factory, userid):
 
         def setUpIncomingMail(inbox):
             incoming_mail = IncomingMail(
