@@ -246,15 +246,21 @@ class StandardMailService(service.MultiService, HookableService):
     def hook_on_new_keymanager_instance(self, **kw):
         # XXX we can specify this as a waterfall, or just AND the two
         # conditions.
+        userid = kw['userid']
         soledad = kw['soledad']
         keymanager = kw['keymanager']
-        userid = kw['userid']
+        self.startInstance(userid, soledad, keymanager)
 
+    def startInstance(self, userid, soledad, keymanager):
         imap = self.getServiceNamed('imap')
         imap.startInstance(soledad, userid)
+        _, imap_factory = imap.getInstance(userid)
 
         smtp = self.getServiceNamed('smtp')
         smtp.startInstance(keymanager, userid)
+
+        incoming = self.getServiceNamed('incoming_mail')
+        incoming.startInstance(keymanager, soledad, imap_factory, userid)
 
 
 class IMAPService(service.Service):
@@ -280,6 +286,9 @@ class IMAPService(service.Service):
         super(IMAPService, self).stopService()
 
     # Individual accounts
+
+    def getInstance(self, userid):
+        return self._instances.get(userid)
 
     def startInstance(self, soledad, userid):
         port, factory = imap.run_service(soledad, userid=userid)
@@ -344,6 +353,9 @@ class IncomingMailService(service.Service):
 
     name = 'incoming_mail'
 
+    def __init__(self):
+        self._instances = {}
+
     def startService(self):
         print "Starting dummy IncomingMail Service"
         super(IncomingMailService, self).startService()
@@ -351,8 +363,24 @@ class IncomingMailService(service.Service):
     def stopService(self):
         super(IncomingMailService, self).stopService()
 
-    def _start_incoming_mail_service(self, keymanager, soledad,
-                                     imap_factory, userid):
+    # Individual accounts
+
+    # TODO IncomingMail *IS* already a service.
+    # I think we should better model the current Service
+    # as a startInstance inside a container, and get this
+    # multi-tenant service inside the leap.mail.incoming.service.
+
+    def startInstance(self, keymanager, soledad, imap_factory, userid):
+        self._start_incoming_mail_instance(
+            keymanager, soledad, imap_factory, userid)
+
+    def stopInstance(self, userid):
+        # TODO toggle offline!
+        pass
+
+    def _start_incoming_mail_instance(self, keymanager, soledad,
+                                      imap_factory, userid,
+                                      start_sync=True):
 
         def setUpIncomingMail(inbox):
             incoming_mail = IncomingMail(
@@ -363,7 +391,13 @@ class IncomingMailService(service.Service):
                 check_period=INCOMING_CHECK_PERIOD)
             return incoming_mail
 
+        def registerInstance(incoming_instance):
+            self._instances[userid] = incoming_instance
+            if start_sync:
+                incoming_instance.startService()
+
         acc = imap_factory.theAccount
         d = acc.callWhenReady(lambda _: acc.getMailbox(INBOX_NAME))
         d.addCallback(setUpIncomingMail)
+        d.addCallback(registerInstance)
         return d
