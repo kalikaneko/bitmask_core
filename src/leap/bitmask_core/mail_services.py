@@ -5,6 +5,7 @@ This is quite moving work still.
 This should be moved to the different packages when it stabilizes.
 """
 import os
+from glob import glob
 from collections import defaultdict
 
 from twisted.application import service
@@ -71,6 +72,11 @@ def notify_hooked_services(this_hook, this_service, **data):
             this_hook, **data)
 
 
+def get_all_soledad_uuids():
+    return [os.path.split(p)[-1].split('.db')[0] for p in
+            glob(os.path.expanduser('~/.config/leap/soledad/*.db'))]
+
+
 class SoledadContainer(Container):
 
     def add_instance(self, userid, uuid, passphrase, token):
@@ -78,14 +84,43 @@ class SoledadContainer(Container):
 
         # TODO automate bootstrapping stuff
         # TODO consolidate canonical factory
-        # TODO if token is None, set not syncable
 
-        soledad = self._create_soledad_instance(
-            uuid, passphrase, '/tmp/soledad',
-            'https://goldeneye.cdev.bitmask.net:2323',
-            os.path.expanduser(
-                '~/.config/leap/providers/%s/keys/ca/cacert.pem' % provider),
-            token)
+        # TODO ----------------------------------------------
+        # there are TWO strategies here:
+        # 1. saving the mappings of userid<>uuid in a file
+        # 2. iterating through all the databases, unlock
+        #    the ones that we can, and peek inside to see
+        #    if they belong to the account for THIS userid
+        #    (because we can have more than one account with
+        #    the same password).
+        # We probably should go with 1. in first place.
+        # It can happen that we don't have the mapping yet:
+        # in that case, we cannot create the instance, and the
+        # second event in the chain (ie, the bonafide remote
+        # authentication) should create it instead.
+        ------------------------------------------------------
+        if uuid:
+            all_uuid = [uuid]
+        else:
+            all_uuid = get_all_soledad_uuids()
+
+        for uuid in all_uuid:
+            try:
+                print 'trying', uuid
+                soledad = self._create_soledad_instance(
+                    uuid, passphrase, '/tmp/soledad',
+                    'https://goldeneye.cdev.bitmask.net:2323',
+                    os.path.expanduser(
+                        '~/.config/leap/providers/%s/keys/ca/cacert.pem' % provider),
+                    token)
+                print 'soledad?', soledad
+                # XXX check metadata ------------- userid, uuid
+                break
+            except Exception as exc:
+                print 'exception %r' % exc
+                log.error(exc)
+                pass
+
         self._instances[userid] = soledad
 
         this_hook = 'on_new_soledad_instance'
@@ -139,9 +174,9 @@ class SoledadService(service.Service, HookableService):
     # hooks
 
     def hook_on_passphrase_entry(self, **kw):
-        userid = kw['username']
-        uuid = kw['uuid']
-        password = kw['password']
+        userid = kw.get('username')
+        password = kw.get('password')
+        uuid = kw.get('uuid')
         container = self._container
         print "ON PASSPHRASE ENTRY: NEW INSTANCE %s" % userid
         if not container.get_instance(userid):
