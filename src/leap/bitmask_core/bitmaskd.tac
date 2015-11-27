@@ -10,6 +10,7 @@ top_service = service.MultiService()
 
 bonafide_zmq_service = BonafideZMQService()
 bonafide_zmq_service.setServiceParent(top_service)
+bonafide_zmq_service.register_hook('on_passphrase_entry', trigger='soledad')
 bonafide_zmq_service.register_hook('on_bonafide_auth', trigger='soledad')
 
 # TODO -- IF EIP IS ENABLED:

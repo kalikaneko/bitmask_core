@@ -73,13 +73,15 @@ def notify_hooked_services(this_hook, this_service, **data):
 
 class SoledadContainer(Container):
 
-    def add_instance(self, userid, token, uuid):
+    def add_instance(self, userid, uuid, passphrase, token):
         user, provider = userid.split('@')
 
         # TODO automate bootstrapping stuff
         # TODO consolidate canonical factory
+        # TODO if token is None, set not syncable
+
         soledad = self._create_soledad_instance(
-            uuid, 'lalalala', '/tmp/soledad',
+            uuid, passphrase, '/tmp/soledad',
             'https://goldeneye.cdev.bitmask.net:2323',
             os.path.expanduser(
                 '~/.config/leap/providers/%s/keys/ca/cacert.pem' % provider),
@@ -91,11 +93,15 @@ class SoledadContainer(Container):
                 'soledad': soledad}
         notify_hooked_services(this_hook, self.service, **data)
 
-    def set_syncable(self, user, state):
-        pass
+    def set_remote_auth_token(self, userid, token):
+        self.get_instance(userid).token = token
 
-    def sync(self, user):
-        self.get_instance(user).sync()
+    def set_syncable(self, userid, state):
+        # TODO should check that there's a token!
+        self.get_instance(userid).set_syncable(bool(state))
+
+    def sync(self, userid):
+        self.get_instance(userid).sync()
 
     def _create_soledad_instance(self, uuid, passphrase, basedir, server_url,
                                  cert_file, token):
@@ -105,6 +111,9 @@ class SoledadContainer(Container):
         local_db_path = os.path.join(
             basedir, '%s.db' % uuid)
 
+        if token is None:
+            syncable = False
+
         return Soledad(
             uuid,
             unicode(passphrase),
@@ -113,11 +122,13 @@ class SoledadContainer(Container):
             server_url=server_url,
             cert_file=cert_file,
             auth_token=token,
-            defer_encryption=True)
+            defer_encryption=True,
+            syncable=syncable)
+
 
 class SoledadService(service.Service, HookableService):
 
-    subscribed_to_hooks = ('on_bonafide_auth', )
+    subscribed_to_hooks = ('on_bonafide_auth', 'on_passphrase_entry')
 
     def startService(self):
         print "Starting Soledad Service"
@@ -127,15 +138,22 @@ class SoledadService(service.Service, HookableService):
 
     # hooks
 
-    def hook_on_bonafide_auth(self, **kw):
-        user = kw['username']
+    def hook_on_passphrase_entry(self, **kw):
+        userid = kw['username']
         uuid = kw['uuid']
+        password = kw['password']
+        container = self._container
+        print "ON PASSPHRASE ENTRY: NEW INSTANCE %s" % userid
+        if not container.get_instance(userid):
+            container.add_instance(userid, uuid, password, token=None)
+
+    def hook_on_bonafide_auth(self, **kw):
+        userid = kw['username']
         token = kw['token']
         container = self._container
-        if not container.get_instance(user):
-            print "Going to instantiate a new soledad %s %s %s" % (
-                user, token, uuid)
-            container.add_instance(user, token, uuid)
+        print "PASSING A NEW TOKEN for soledad: %s" % userid
+        container.set_remote_auth_token(userid, token)
+        container.set_syncable(userid, True)
 
 
 class KeymanagerContainer(Container):
