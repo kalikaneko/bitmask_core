@@ -18,6 +18,8 @@ from leap.mail.imap.service import imap
 from leap.mail.incoming.service import IncomingMail, INCOMING_CHECK_PERIOD
 from leap.mail.smtp import setup_smtp_gateway
 
+from .uuid_map import UserMap
+
 
 class Container(object):
 
@@ -79,47 +81,31 @@ def get_all_soledad_uuids():
 
 class SoledadContainer(Container):
 
-    def add_instance(self, userid, uuid, passphrase, token):
+    def __init__(self):
+        super(SoledadContainer, self).__init__()
+        self._usermap = UserMap()
+
+    def add_instance(self, userid, passphrase, uuid=None, token=None):
+
+        if not uuid:
+            bootstrapped_uuid = self._usermap.lookup_uuid(userid, passphrase)
+            uuid = bootstrapped_uuid
+            if not uuid:
+                return
+        else:
+            self._usermap.add(userid, uuid, passphrase)
+
         user, provider = userid.split('@')
 
         # TODO automate bootstrapping stuff
         # TODO consolidate canonical factory
 
-        # TODO ----------------------------------------------
-        # there are TWO strategies here:
-        # 1. saving the mappings of userid<>uuid in a file
-        # 2. iterating through all the databases, unlock
-        #    the ones that we can, and peek inside to see
-        #    if they belong to the account for THIS userid
-        #    (because we can have more than one account with
-        #    the same password).
-        # We probably should go with 1. in first place.
-        # It can happen that we don't have the mapping yet:
-        # in that case, we cannot create the instance, and the
-        # second event in the chain (ie, the bonafide remote
-        # authentication) should create it instead.
-        ------------------------------------------------------
-        if uuid:
-            all_uuid = [uuid]
-        else:
-            all_uuid = get_all_soledad_uuids()
-
-        for uuid in all_uuid:
-            try:
-                print 'trying', uuid
-                soledad = self._create_soledad_instance(
-                    uuid, passphrase, '/tmp/soledad',
-                    'https://goldeneye.cdev.bitmask.net:2323',
-                    os.path.expanduser(
-                        '~/.config/leap/providers/%s/keys/ca/cacert.pem' % provider),
-                    token)
-                print 'soledad?', soledad
-                # XXX check metadata ------------- userid, uuid
-                break
-            except Exception as exc:
-                print 'exception %r' % exc
-                log.error(exc)
-                pass
+        soledad = self._create_soledad_instance(
+            uuid, passphrase, '/tmp/soledad',
+            'https://goldeneye.cdev.bitmask.net:2323',
+            os.path.expanduser(
+                '~/.config/leap/providers/%s/keys/ca/cacert.pem' % provider),
+            token)
 
         self._instances[userid] = soledad
 
@@ -127,16 +113,6 @@ class SoledadContainer(Container):
         data = {'user': userid, 'uuid': uuid, 'token': token,
                 'soledad': soledad}
         notify_hooked_services(this_hook, self.service, **data)
-
-    def set_remote_auth_token(self, userid, token):
-        self.get_instance(userid).token = token
-
-    def set_syncable(self, userid, state):
-        # TODO should check that there's a token!
-        self.get_instance(userid).set_syncable(bool(state))
-
-    def sync(self, userid):
-        self.get_instance(userid).sync()
 
     def _create_soledad_instance(self, uuid, passphrase, basedir, server_url,
                                  cert_file, token):
@@ -148,6 +124,9 @@ class SoledadContainer(Container):
 
         if token is None:
             syncable = False
+            token = ''
+        else:
+            syncable = True
 
         return Soledad(
             uuid,
@@ -159,6 +138,16 @@ class SoledadContainer(Container):
             auth_token=token,
             defer_encryption=True,
             syncable=syncable)
+
+    def set_remote_auth_token(self, userid, token):
+        self.get_instance(userid).token = token
+
+    def set_syncable(self, userid, state):
+        # TODO should check that there's a token!
+        self.get_instance(userid).set_syncable(bool(state))
+
+    def sync(self, userid):
+        self.get_instance(userid).sync()
 
 
 class SoledadService(service.Service, HookableService):
@@ -180,15 +169,20 @@ class SoledadService(service.Service, HookableService):
         container = self._container
         print "ON PASSPHRASE ENTRY: NEW INSTANCE %s" % userid
         if not container.get_instance(userid):
-            container.add_instance(userid, uuid, password, token=None)
+            container.add_instance(userid, password, uuid=uuid, token=None)
 
     def hook_on_bonafide_auth(self, **kw):
         userid = kw['username']
+        password = kw['password']
         token = kw['token']
+        uuid = kw['uuid']
         container = self._container
-        print "PASSING A NEW TOKEN for soledad: %s" % userid
-        container.set_remote_auth_token(userid, token)
-        container.set_syncable(userid, True)
+        if container.get_instance(userid):
+            print "PASSING A NEW TOKEN for soledad: %s" % userid
+            container.set_remote_auth_token(userid, token)
+            container.set_syncable(userid, True)
+        else:
+            container.add_instance(userid, password, uuid=uuid, token=token)
 
 
 class KeymanagerContainer(Container):
@@ -282,12 +276,13 @@ class StandardMailService(service.MultiService, HookableService):
     subscribed_to_hooks = ('on_new_keymanager_instance',)
 
     def __init__(self):
+        self._soledad_sessions = {}
         super(StandardMailService, self).__init__()
         self.initializeChildrenServices()
 
     def initializeChildrenServices(self):
         self.addService(IncomingMailService())
-        self.addService(IMAPService())
+        self.addService(IMAPService(self._soledad_sessions))
         self.addService(SMTPService())
 
     def startService(self):
@@ -300,15 +295,18 @@ class StandardMailService(service.MultiService, HookableService):
         super(StandardMailService, self).stopService()
 
     def startInstance(self, userid, soledad, keymanager):
-        imap = self.getServiceNamed('imap')
-        imap.startInstance(soledad, userid)
-        _, imap_factory = imap.getInstance(userid)
+        #imap = self.getServiceNamed('imap')
+        #imap.startInstance(soledad, userid)
+        #_, imap_factory = imap.getInstance(userid)
+        self._soledad_sessions[userid] = soledad
 
         smtp = self.getServiceNamed('smtp')
         smtp.startInstance(keymanager, userid)
 
-        incoming = self.getServiceNamed('incoming_mail')
-        incoming.startInstance(keymanager, soledad, imap_factory, userid)
+        # TODO ---------- need to rewrite Incoming to
+        # access soledad_sessions too
+        #incoming = self.getServiceNamed('incoming_mail')
+        #incoming.startInstance(keymanager, soledad, imap_factory, userid)
 
     # hooks
 
@@ -325,38 +323,22 @@ class IMAPService(service.Service):
 
     name = 'imap'
 
-    # TODO --- this needs to allow authentication,
-    # to be able to expose the SAME service for different
-    # accounts.
+    def __init__(self, soledad_sessions):
+        port, factory = imap.run_service(soledad_sessions)
 
-    # TODO -- the offline service (ie, until BONAFIDE REMOTE
-    # has been authenticated) should expose a dummy IMAP account.
-
-    def __init__(self):
+        self._port = port
+        self._factory = factory
+        self._soledad_sessions = soledad_sessions
         super(IMAPService, self).__init__()
-        self._instances = {}
 
     def startService(self):
         print "Starting dummy IMAP Service"
         super(IMAPService, self).startService()
 
     def stopService(self):
-        # TODO cleanup all instances
+        self._port.stopListening()
+        self._factory.doStop()
         super(IMAPService, self).stopService()
-
-    # Individual accounts
-
-    def getInstance(self, userid):
-        return self._instances.get(userid)
-
-    def startInstance(self, soledad, userid):
-        port, factory = imap.run_service(soledad, userid=userid)
-        self._instances[userid] = port, factory
-
-    def stopInstance(self, userid):
-        port, factory = self._instances[userid]
-        port.stopListening()
-        factory.doStop()
 
 
 class SMTPService(service.Service):
