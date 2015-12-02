@@ -1,4 +1,5 @@
 srp
+scrypt
 twisted>=14.0.0
 txzmq
 service-identity
