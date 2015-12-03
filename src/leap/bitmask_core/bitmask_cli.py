@@ -97,6 +97,7 @@ GENERAL COMMANDS:
                             help='stops the mail service if running')
         parser.add_argument('--status', action='store_true',
                             help='displays status about the mail service')
+        parser.add_argument('--get-imap-token')
         args = parser.parse_args(sys.argv[2:])
         self.subargs = args
 

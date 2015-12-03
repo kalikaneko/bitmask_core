@@ -277,6 +277,7 @@ class StandardMailService(service.MultiService, HookableService):
 
     def __init__(self):
         self._soledad_sessions = {}
+        self._imap_tokens = {}
         super(StandardMailService, self).__init__()
         self.initializeChildrenServices()
 
@@ -295,18 +296,25 @@ class StandardMailService(service.MultiService, HookableService):
         super(StandardMailService, self).stopService()
 
     def startInstance(self, userid, soledad, keymanager):
-        #imap = self.getServiceNamed('imap')
-        #imap.startInstance(soledad, userid)
-        #_, imap_factory = imap.getInstance(userid)
         self._soledad_sessions[userid] = soledad
-
         smtp = self.getServiceNamed('smtp')
         smtp.startInstance(keymanager, userid)
 
-        # TODO ---------- need to rewrite Incoming to
+        def registerIMAPToken(token):
+            print "GOT IMAP TOKEN---->", token
+            self._imap_tokens[userid] = token
+            return token
+
+        # TODO ---------- need to rewrite Incoming to --------------------
         # access soledad_sessions too
         #incoming = self.getServiceNamed('incoming_mail')
         #incoming.startInstance(keymanager, soledad, imap_factory, userid)
+        #-----------------------------------------------------------------
+
+        d = soledad.get_or_create_service_token('imap')
+        d.addCallback(registerIMAPToken)
+        return d
+
 
     # hooks
 
