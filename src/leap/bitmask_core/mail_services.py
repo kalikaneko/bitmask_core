@@ -9,6 +9,7 @@ from glob import glob
 from collections import defaultdict
 
 from twisted.application import service
+from twisted.internet import defer
 from twisted.python import log
 
 from leap.keymanager import KeyManager
@@ -167,7 +168,7 @@ class SoledadService(service.Service, HookableService):
         password = kw.get('password')
         uuid = kw.get('uuid')
         container = self._container
-        print "ON PASSPHRASE ENTRY: NEW INSTANCE %s" % userid
+        print "on_passphrase_entry: New Soledad Instance: %s" % userid
         if not container.get_instance(userid):
             container.add_instance(userid, password, uuid=uuid, token=None)
 
@@ -197,7 +198,7 @@ class KeymanagerContainer(Container):
         keymanager = self._create_keymanager_instance(
             userid, token, uuid, soledad)
         # TODO add hook for KEY GENERATION AND SENDING...
-        print "ADD KEYMANAGER INSTANCE FOR", userid
+        print "Adding Keymanager instance for:", userid
         self._instances[userid] = keymanager
 
         # TODO use onready-deferreds instead
@@ -278,6 +279,7 @@ class StandardMailService(service.MultiService, HookableService):
     def __init__(self):
         self._soledad_sessions = {}
         self._imap_tokens = {}
+        self._active_user = None
         super(StandardMailService, self).__init__()
         self.initializeChildrenServices()
 
@@ -301,8 +303,8 @@ class StandardMailService(service.MultiService, HookableService):
         smtp.startInstance(keymanager, userid)
 
         def registerIMAPToken(token):
-            print "GOT IMAP TOKEN---->", token
             self._imap_tokens[userid] = token
+            self._active_user = userid
             return token
 
         # TODO ---------- need to rewrite Incoming to --------------------
@@ -315,7 +317,6 @@ class StandardMailService(service.MultiService, HookableService):
         d.addCallback(registerIMAPToken)
         return d
 
-
     # hooks
 
     def hook_on_new_keymanager_instance(self, **kw):
@@ -325,6 +326,17 @@ class StandardMailService(service.MultiService, HookableService):
         soledad = kw['soledad']
         keymanager = kw['keymanager']
         self.startInstance(userid, soledad, keymanager)
+
+    # commands
+
+    def get_imap_token(self):
+        # TODO this should have some kind of previous authentication with
+        # whatever communication channel we're using.
+        active_user = self._active_user
+        if not active_user:
+            return defer.succeed('NO ACTIVE USER')
+        token = self._imap_tokens.get(active_user)
+        return defer.succeed("IMAP TOKEN (%s): %s" % (active_user, token))
 
 
 class IMAPService(service.Service):
@@ -340,7 +352,7 @@ class IMAPService(service.Service):
         super(IMAPService, self).__init__()
 
     def startService(self):
-        print "Starting dummy IMAP Service"
+        print "Starting IMAP Service"
         super(IMAPService, self).startService()
 
     def stopService(self):
@@ -359,6 +371,7 @@ class SMTPService(service.Service):
 
     # TODO -- the offline service (ie, until BONAFIDE REMOTE
     # has been authenticated) should expose a dummy SMTP account.
+
     def __init__(self):
         super(SMTPService, self).__init__()
         self._instances = {}

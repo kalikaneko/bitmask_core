@@ -99,7 +99,8 @@ GENERAL COMMANDS:
                             help='stops the mail service if running')
         parser.add_argument('--status', action='store_true',
                             help='displays status about the mail service')
-        parser.add_argument('--get-imap-token')
+        parser.add_argument('--get-imap-token', action='store_true',
+                            help='returns token for the imap service')
         args = parser.parse_args(sys.argv[2:])
         self.subargs = args
 
@@ -140,6 +141,7 @@ def error(msg, stop=False):
         reactor.stop()
     else:
         sys.exit(1)
+
 
 def do_print(stuff):
     print Fore.GREEN + stuff[0] + Fore.RESET
@@ -184,6 +186,10 @@ def send_command(cli):
             data = ("user", "authenticate", username, passwd)
         if subargs.logout:
             data = ("user", "logout", username, passwd)
+
+    elif cmd == 'mail':
+        if subargs.get_imap_token:
+            data = ("mail", "get_imap_token")
 
     s = get_zmq_connection()
     try:
