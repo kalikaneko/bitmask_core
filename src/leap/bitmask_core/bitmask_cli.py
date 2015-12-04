@@ -157,13 +157,13 @@ def send_command(cli):
         return
 
     elif cmd == 'status':
-        data = ("stats",)
+        data = ("status",)
 
     elif cmd == 'shutdown':
         data = ("shutdown",)
-    
+
     elif cmd == 'debug':
-        data = ("get_soledad",)
+        data = ("stats",)
 
     elif cmd == 'user':
         username = subargs.username
@@ -173,7 +173,7 @@ def send_command(cli):
             return
         # TODO check that ONLY ONE FLAG is True
         # TODO check that AT LEAST ONE FLAG is True
-        
+
         passwd = getpass.getpass()
 
         if subargs.create:

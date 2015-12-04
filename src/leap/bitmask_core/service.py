@@ -17,12 +17,15 @@
 """
 Bitmask-core Service.
 """
+import resource
 
 from twisted.application import service
+from twisted.python import log
 
-from leap.bonafide.zmq_service import BonafideZMQService
+#from leap.bonafide.zmq_service import BonafideZMQService
 
 from leap.bitmask_core import mail_services
+from leap.bitmask_core import zmq
 
 
 class BitmaskBackend(service.MultiService):
@@ -41,10 +44,11 @@ class BitmaskBackend(service.MultiService):
         self.init_web()
 
     def init_bonafide(self):
-        bf_zmq = BonafideZMQService()
-        bf_zmq.setServiceParent(self)
-        bf_zmq.register_hook('on_passphrase_entry', trigger='soledad')
-        bf_zmq.register_hook('on_bonafide_auth', trigger='soledad')
+        pass
+        #bf_zmq = BonafideZMQService()
+        #bf_zmq.setServiceParent(self)
+        #bf_zmq.register_hook('on_passphrase_entry', trigger='soledad')
+        #bf_zmq.register_hook('on_bonafide_auth', trigger='soledad')
 
     def init_soledad(self):
         sol = mail_services.SoledadService()
@@ -67,7 +71,13 @@ class BitmaskBackend(service.MultiService):
         pass
 
     def init_zmq(self):
-        pass
+        zs = zmq.ZMQDispatcher(self)
+        zs.setServiceParent(self)
 
     def init_web(self):
         pass
+
+    def do_stats(self):
+        log.msg('BitmaskCore Service STATS')
+        mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        return '[+] BitmaskCore: [Mem usage: %s KB]' % (mem / 1024)
