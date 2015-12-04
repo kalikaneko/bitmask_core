@@ -48,22 +48,22 @@ class _DispatcherREPConnection(ZmqREPConnection):
 
     def __init__(self, zf, e, core):
         ZmqREPConnection.__init__(self, zf, e)
-        self._core = core
+        self.core = core
 
     def gotMessage(self, msgId, *parts):
 
         cmd = parts[0]
 
         if cmd == 'stats':
-            r = self._core.do_stats()
+            r = self.core.do_stats()
             self.defer_reply(r, msgId)
 
         if cmd == 'status':
-            r = self._core.do_status()
+            r = self.core.do_status()
             self.defer_reply(r, msgId)
 
         if cmd == 'version':
-            r = self._core.do_version()
+            r = self.core.do_version()
             self.defer_reply(r, msgId)
 
         if cmd == 'shutdown':
@@ -106,7 +106,7 @@ class _DispatcherREPConnection(ZmqREPConnection):
             eip = self._get_service('eip')
 
     def _get_service(self, name):
-        return self._core.getServiceNamed(name)
+        return self.core.getServiceNamed(name)
 
     def defer_reply(self, response, msgId):
         reactor.callLater(0, self.reply, msgId, str(response))
@@ -120,5 +120,4 @@ class _DispatcherREPConnection(ZmqREPConnection):
 
     def do_shutdown(self):
         print "Service Stopped. Have a nice day."
-        self._core.stopService()
-        reactor.stop()
+        self.core.do_shutdown()

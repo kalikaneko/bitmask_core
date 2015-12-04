@@ -20,12 +20,14 @@ Bitmask-core Service.
 import resource
 
 from twisted.application import service
+from twisted.internet import reactor
 from twisted.python import log
 
 from leap.bonafide.service import BonafideService
 
 from leap.bitmask_core import mail_services
 from leap.bitmask_core import _zmq
+from leap.bitmask_core import websocket
 from leap.bitmask_core._version import get_versions
 
 
@@ -76,7 +78,8 @@ class BitmaskBackend(service.MultiService):
         zs.setServiceParent(self)
 
     def init_web(self):
-        pass
+        ws = websocket.WebSocketsDispatcherService(self)
+        ws.setServiceParent(self)
 
     # General commands for the BitmaskBackend Core Service
 
@@ -97,3 +100,7 @@ class BitmaskBackend(service.MultiService):
     def do_version(self):
         version = get_versions()['version']
         return "BitmaskCore: %s" % version
+
+    def do_shutdown(self):
+        self.stopService()
+        reactor.stop()

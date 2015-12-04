@@ -2,5 +2,6 @@ srp
 scrypt
 twisted>=14.0.0
 txzmq
+autobahn
 service-identity
 colorama
