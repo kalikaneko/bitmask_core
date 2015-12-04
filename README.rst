@@ -18,7 +18,7 @@ Using
 ok, we told you this is unsupported software, and you still want to play with it.
 This can get you running::
 
-  make bitmaskd_server
+  make bitmaskd
   bitmask_cli --help
 
 
