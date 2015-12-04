@@ -179,11 +179,11 @@ def send_command(cli):
         passwd = getpass.getpass()
 
         if subargs.create:
-            data = ("signup", username, passwd)
+            data = ("user", "signup", username, passwd)
         if subargs.authenticate:
-            data = ("authenticate", username, passwd)
+            data = ("user", "authenticate", username, passwd)
         if subargs.logout:
-            data = ("logout", username, passwd)
+            data = ("user", "logout", username, passwd)
 
     s = get_zmq_connection()
     try:

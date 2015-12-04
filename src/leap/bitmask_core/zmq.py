@@ -53,24 +53,47 @@ class _DispatcherREPConnection(ZmqREPConnection):
     def gotMessage(self, msgId, *parts):
 
         cmd = parts[0]
-        print "GOT COMMAND", cmd
 
-        if cmd == "stats":
+        if cmd == 'stats':
             r = self._core.do_stats()
             self.defer_reply(r, msgId)
 
-        if cmd == "status":
+        if cmd == 'status':
             r = self._core.do_status()
             self.defer_reply(r, msgId)
 
-        if cmd == "version":
+        if cmd == 'version':
             r = self._core.do_version()
             self.defer_reply(r, msgId)
 
-        if cmd == "shutdown":
+        if cmd == 'shutdown':
             r = 'ok, shutting down...'
             self.defer_reply(r, msgId)
             self.do_shutdown()
+
+        if cmd == 'user':
+            subcmd = parts[1]
+            user, password = parts[2], parts[3]
+
+            bf = self._get_service('bonafide')
+
+            if subcmd == "authenticate":
+                d = bf.do_authenticate(user, password)
+            if subcmd == "signup":
+                d = bf.do_signup(user, password)
+            if subcmd == "logout":
+                d = bf.do_logout(user, password)
+            d.addCallback(lambda r: self.defer_reply(r, msgId))
+            d.addErrback(lambda f: self.log_err(f, msgId))
+
+        if cmd == 'mail':
+            subcmd = parts[1]
+
+        if cmd == 'eip':
+            subcmd = parts[1]
+
+    def _get_service(self, name):
+        return self._core.getServiceNamed(name)
 
     def defer_reply(self, response, msgId):
         reactor.callLater(0, self.reply, msgId, str(response))

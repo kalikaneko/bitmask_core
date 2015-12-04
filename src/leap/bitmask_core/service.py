@@ -22,7 +22,7 @@ import resource
 from twisted.application import service
 from twisted.python import log
 
-#from leap.bonafide.zmq_service import BonafideZMQService
+from leap.bonafide.service import BonafideService
 
 from leap.bitmask_core import mail_services
 from leap.bitmask_core import zmq
@@ -45,11 +45,11 @@ class BitmaskBackend(service.MultiService):
         self.init_web()
 
     def init_bonafide(self):
-        pass
-        #bf_zmq = BonafideZMQService()
-        #bf_zmq.setServiceParent(self)
-        #bf_zmq.register_hook('on_passphrase_entry', trigger='soledad')
-        #bf_zmq.register_hook('on_bonafide_auth', trigger='soledad')
+        bf = BonafideService()
+        bf.setName("bonafide")
+        bf.setServiceParent(self)
+        #bf.register_hook('on_passphrase_entry', trigger='soledad')
+        #bf.register_hook('on_bonafide_auth', trigger='soledad')
 
     def init_soledad(self):
         sol = mail_services.SoledadService()
