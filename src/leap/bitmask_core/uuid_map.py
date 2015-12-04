@@ -14,6 +14,8 @@ class UserMap(object):
     A persistent mapping between user-ids and uuids.
     """
 
+    # TODO Add padding to the encrypted string
+
     def __init__(self):
         self._d = {}
         self._lines = set([])
