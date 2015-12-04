@@ -26,6 +26,7 @@ from twisted.python import log
 
 from leap.bitmask_core import mail_services
 from leap.bitmask_core import zmq
+from leap.bitmask_core._version import get_versions
 
 
 class BitmaskBackend(service.MultiService):
@@ -77,7 +78,22 @@ class BitmaskBackend(service.MultiService):
     def init_web(self):
         pass
 
+    # General commands for the BitmaskBackend Core Service
+
     def do_stats(self):
         log.msg('BitmaskCore Service STATS')
         mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         return '[+] BitmaskCore: [Mem usage: %s KB]' % (mem / 1024)
+
+    def do_status(self):
+        soledad = self.getServiceNamed('soledad')
+        keymanager = self.getServiceNamed('keymanager')
+        mail = self.getServiceNamed('mail')
+
+        return "[soledad: %s] [keymanager: %s] [mail: %s]" % tuple(
+            ["running" if service.running else "stopped" for service in
+             soledad, keymanager, mail])
+
+    def do_version(self):
+        version = get_versions()['version']
+        return "BitmaskCore: %s" % version

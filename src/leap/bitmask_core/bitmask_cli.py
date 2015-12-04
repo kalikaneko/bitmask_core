@@ -51,6 +51,8 @@ GENERAL COMMANDS:
    version    prints version number and exit
    shutdown   shutdown Bitmask backend daemon
    status     displays general status about the running Bitmask services
+   debug      show some debug info about bitmask-core
+
 
 ''', epilog=("Use 'bitmask_cli <command> --help' to learn more "
              "about each command."))
@@ -153,8 +155,7 @@ def send_command(cli):
 
     if cmd == 'version':
         do_print(['bitmask_cli: 0.0.1'])
-        reactor.stop()
-        return
+        data = ("version",)
 
     elif cmd == 'status':
         data = ("status",)
@@ -171,6 +172,7 @@ def send_command(cli):
             error("Username ID must be in the form <user@example.org>",
                   stop=True)
             return
+
         # TODO check that ONLY ONE FLAG is True
         # TODO check that AT LEAST ONE FLAG is True
 

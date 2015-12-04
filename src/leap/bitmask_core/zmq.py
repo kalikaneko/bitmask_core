@@ -59,6 +59,19 @@ class _DispatcherREPConnection(ZmqREPConnection):
             r = self._core.do_stats()
             self.defer_reply(r, msgId)
 
+        if cmd == "status":
+            r = self._core.do_status()
+            self.defer_reply(r, msgId)
+
+        if cmd == "version":
+            r = self._core.do_version()
+            self.defer_reply(r, msgId)
+
+        if cmd == "shutdown":
+            r = 'ok, shutting down...'
+            self.defer_reply(r, msgId)
+            self.do_shutdown()
+
     def defer_reply(self, response, msgId):
         reactor.callLater(0, self.reply, msgId, str(response))
 
@@ -69,6 +82,7 @@ class _DispatcherREPConnection(ZmqREPConnection):
     def do_greet(self):
         print "Starting ZMQ Dispatcher"
 
-    def do_bye(self):
-        print "Bonafide service stopped. Have a nice day."
+    def do_shutdown(self):
+        print "Service Stopped. Have a nice day."
+        self._core.stopService()
         reactor.stop()
