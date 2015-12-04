@@ -179,7 +179,7 @@ class SoledadService(service.Service, HookableService):
         uuid = kw['uuid']
         container = self._container
         if container.get_instance(userid):
-            print "PASSING A NEW TOKEN for soledad: %s" % userid
+            print "Passing a new SRP Token to Soledad: %s" % userid
             container.set_remote_auth_token(userid, token)
             container.set_syncable(userid, True)
         else:
@@ -328,6 +328,9 @@ class StandardMailService(service.MultiService, HookableService):
         self.startInstance(userid, soledad, keymanager)
 
     # commands
+
+    def do_status(self):
+        return 'mail: %s' % 'running' if self.running else 'disabled'
 
     def get_imap_token(self):
         # TODO this should have some kind of previous authentication with

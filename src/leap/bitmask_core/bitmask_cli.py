@@ -99,8 +99,15 @@ GENERAL COMMANDS:
                             help='stops the mail service if running')
         parser.add_argument('--status', action='store_true',
                             help='displays status about the mail service')
+        parser.add_argument('--enable', action='store_true')
+        parser.add_argument('--disable', action='store_true')
         parser.add_argument('--get-imap-token', action='store_true',
                             help='returns token for the imap service')
+        parser.add_argument('--get-smtp-certificate', action='store_true',
+                            help='downloads a new smtp certificate (NOT IMPLEMENTED)')
+        parser.add_argument('--check-smtp-certificate', action='store_true',
+                            help='downloads a new smtp certificate (NOT IMPLEMENTED')
+
         args = parser.parse_args(sys.argv[2:])
         self.subargs = args
 
@@ -111,6 +118,8 @@ GENERAL COMMANDS:
         parser.add_argument('--start', help='Start service')
         parser.add_argument('--stop', help='Stop service')
         parser.add_argument('--status', help='Display status about service')
+        parser.add_argument('--enable', action='store_true')
+        parser.add_argument('--disable', action='store_true')
         args = parser.parse_args(sys.argv[2:])
         self.subargs = args
 
@@ -188,6 +197,9 @@ def send_command(cli):
             data = ("user", "logout", username, passwd)
 
     elif cmd == 'mail':
+        if subargs.status:
+            data = ("mail", "status")
+
         if subargs.get_imap_token:
             data = ("mail", "get_imap_token")
 

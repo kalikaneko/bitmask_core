@@ -91,6 +91,10 @@ class _DispatcherREPConnection(ZmqREPConnection):
 
             m = self._get_service('mail')
 
+            if subcmd == 'status':
+                r = m.do_status()
+                self.defer_reply(r, msgId)
+
             if subcmd == 'get_imap_token':
                 d = m.get_imap_token()
                 d.addCallback(lambda r: self.defer_reply(r, msgId))
