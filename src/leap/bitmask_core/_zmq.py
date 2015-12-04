@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# zmq.py
+# _zmq.py
 # Copyright (C) 2015 LEAP
 #
 # This program is free software: you can redistribute it and/or modify
@@ -77,11 +77,11 @@ class _DispatcherREPConnection(ZmqREPConnection):
 
             bf = self._get_service('bonafide')
 
-            if subcmd == "authenticate":
+            if subcmd == 'authenticate':
                 d = bf.do_authenticate(user, password)
-            if subcmd == "signup":
+            if subcmd == 'signup':
                 d = bf.do_signup(user, password)
-            if subcmd == "logout":
+            if subcmd == 'logout':
                 d = bf.do_logout(user, password)
             d.addCallback(lambda r: self.defer_reply(r, msgId))
             d.addErrback(lambda f: self.log_err(f, msgId))
@@ -89,8 +89,17 @@ class _DispatcherREPConnection(ZmqREPConnection):
         if cmd == 'mail':
             subcmd = parts[1]
 
+            m = self._get_service('mail')
+
+            if subcmd == 'get_imap_token':
+                d = m.get_imap_token()
+                d.addCallback(lambda r: self.defer_reply(r, msgId))
+                d.addErrback(lambda f: self.log_err(f, msgId))
+
         if cmd == 'eip':
             subcmd = parts[1]
+
+            eip = self._get_service('eip')
 
     def _get_service(self, name):
         return self._core.getServiceNamed(name)
