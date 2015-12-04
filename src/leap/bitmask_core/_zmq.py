@@ -138,6 +138,14 @@ class _DispatcherREPConnection(ZmqREPConnection):
 
             eip = self._get_service('eip')
 
+            if subcmd == 'start':
+                r = eip.do_start()
+                self.defer_reply(r, msgId)
+
+            if subcmd == 'stop':
+                r = eip.do_stop()
+                self.defer_reply(r, msgId)
+
     def _get_service(self, name):
         return self.core.getServiceNamed(name)
 

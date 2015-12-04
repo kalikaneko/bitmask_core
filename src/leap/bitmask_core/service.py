@@ -31,6 +31,7 @@ from leap.bitmask_core import websocket
 from leap.bitmask_core._version import get_versions
 
 from leap.common.events import server as event_server
+from leap.vpn import EIPService
 
 
 class BitmaskBackend(configurable.ConfigurableService):
@@ -87,7 +88,9 @@ class BitmaskBackend(configurable.ConfigurableService):
         ms.setServiceParent(self)
 
     def init_eip(self):
-        pass
+        eip_service = EIPService()
+        eip_service.setName("eip")
+        eip_service.setServiceParent(self)
 
     def init_zmq(self):
         zs = _zmq.ZMQDispatcher(self)
@@ -105,13 +108,17 @@ class BitmaskBackend(configurable.ConfigurableService):
         return '[+] BitmaskCore: [Mem usage: %s KB]' % (mem / 1024)
 
     def do_status(self):
-        soledad = self.getServiceNamed('soledad')
-        keymanager = self.getServiceNamed('keymanager')
-        mail = self.getServiceNamed('mail')
+        # we may want to make this tuple a class member
+        services = ('soledad', 'keymanager', 'mail', 'eip')
 
-        return "[soledad: %s] [keymanager: %s] [mail: %s]" % tuple(
-            ["running" if service.running else "stopped" for service in
-             soledad, keymanager, mail])
+        status_messages = []
+        for name in services:
+            status = "stopped"
+            if self.getServiceNamed(name).running:
+                status = "running"
+            status_messages.append("[{}: {}]".format(name, status))
+
+        return " ".join(status_messages)
 
     def do_version(self):
         version = get_versions()['version']
@@ -120,3 +127,11 @@ class BitmaskBackend(configurable.ConfigurableService):
     def do_shutdown(self):
         self.stopService()
         reactor.stop()
+
+    def do_eip_start(self):
+        eip = self.getServiceNamed('eip')
+        eip.do_start()
+
+    def do_eip_stop(self):
+        eip = self.getServiceNamed('eip')
+        eip.do_stop()

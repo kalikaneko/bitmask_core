@@ -74,8 +74,8 @@ GENERAL COMMANDS:
 
     def user(self):
         parser = argparse.ArgumentParser(
-            description=('Handles Bitmask accounts: creation, authentication and '
-                         'modification'),
+            description=('Handles Bitmask accounts: creation, authentication '
+                         'and modification'),
             prog='bitmask_cli user')
         parser.add_argument('--create', action='store_true',
                             help='register a new user, if possible')
@@ -83,7 +83,8 @@ GENERAL COMMANDS:
                             help='logs in against the provider')
         parser.add_argument('--logout', action='store_true',
                             help='ends any active session with the provider')
-        parser.add_argument('username', help='username ID, in the form <user@example.org>')
+        parser.add_argument('username',
+                            help='username ID, in the form <user@example.org>')
         # now that we're inside a subcommand, ignore the first
         # TWO argvs, ie the command (bitmask_cli) and the subcommand (user)
         args = parser.parse_args(sys.argv[2:])
@@ -108,7 +109,8 @@ GENERAL COMMANDS:
         parser.add_argument('--get-smtp-certificate', action='store_true',
                             help='downloads a new smtp certificate')
         parser.add_argument('--check-smtp-certificate', action='store_true',
-                            help='downloads a new smtp certificate (NOT IMPLEMENTED')
+                            help='downloads a new smtp certificate '
+                            '(NOT IMPLEMENTED)')
 
         args = parser.parse_args(sys.argv[2:])
         self.subargs = args
@@ -117,9 +119,11 @@ GENERAL COMMANDS:
         parser = argparse.ArgumentParser(
             description='Encrypted Internet Proxy service',
             prog='bitmask_cli eip')
-        parser.add_argument('--start', help='Start service')
-        parser.add_argument('--stop', help='Stop service')
-        parser.add_argument('--status', help='Display status about service')
+        parser.add_argument('--start', action='store_true',
+                            help='Start service')
+        parser.add_argument('--stop', action='store_true', help='Stop service')
+        parser.add_argument('--status', action='store_true',
+                            help='Display status about service')
         parser.add_argument('--enable', action='store_true')
         parser.add_argument('--disable', action='store_true')
         args = parser.parse_args(sys.argv[2:])
@@ -210,6 +214,13 @@ def send_command(cli):
 
         if subargs.get_smtp_certificate:
             data = ("mail", "get_smtp_certificate")
+
+    elif cmd == 'eip':
+        if subargs.start:
+            data = ("eip", "start")
+
+        if subargs.stop:
+            data = ("eip", "stop")
 
     s = get_zmq_connection()
     try:

@@ -60,7 +60,7 @@ class DispatcherProtocol(WebSocketServerProtocol):
 
         if cmd == "user":
             subcmd = parts[1]
-            #user, password = parts[2], parts[3]
+            # user, password = parts[2], parts[3]
             user = parts[2]
             password = "lalalala"
 
@@ -90,6 +90,19 @@ class DispatcherProtocol(WebSocketServerProtocol):
                 d = m.get_imap_token()
                 d.addBoth(lambda r: self.defer_reply(str(r), binary))
 
+        if cmd == "eip":
+            subcmd = parts[1]
+
+            e = self._get_service('eip')
+
+            if subcmd == 'start':
+                r = e.do_start()
+                self.defer_reply(r, binary)
+
+            if subcmd == 'stop':
+                r = e.do_stop()
+                self.defer_reply(r, binary)
+
     def reply(self, response, binary):
         self.sendMessage(response, binary)
 
@@ -113,17 +126,20 @@ class WebSocketsDispatcherService(service.Service):
 
     def startService(self):
 
-        factory = WebSocketServerFactory(u"ws://127.0.0.1:%d" % self.port, debug=self.debug)
+        factory = WebSocketServerFactory(u"ws://127.0.0.1:%d" % self.port,
+                                         debug=self.debug)
         factory.protocol = DispatcherProtocol
         factory.protocol.core = self._core
 
-        # FIXME: Site.start/stopFactory should start/stop factories wrapped as Resources
+        # FIXME: Site.start/stopFactory should start/stop factories wrapped as
+        # Resources
         factory.startFactory()
 
         resource = WebSocketResource(factory)
 
         # we server static files under "/" ..
-        webdir = os.path.abspath(pkg_resources.resource_filename("leap.bitmask_core", "web"))
+        webdir = os.path.abspath(
+            pkg_resources.resource_filename("leap.bitmask_core", "web"))
         root = File(webdir)
 
         # and our WebSocket server under "/ws"
