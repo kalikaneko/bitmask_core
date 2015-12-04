@@ -15,6 +15,7 @@ from twisted.python import log
 from leap.keymanager import KeyManager
 from leap.soledad.client.api import Soledad
 from leap.mail.constants import INBOX_NAME
+from leap.mail.mail import Account
 from leap.mail.imap.service import imap
 from leap.mail.incoming.service import IncomingMail, INCOMING_CHECK_PERIOD
 from leap.mail.smtp import setup_smtp_gateway
@@ -278,14 +279,15 @@ class StandardMailService(service.MultiService, HookableService):
 
     def __init__(self):
         self._soledad_sessions = {}
+        self._keymanager_sessions = {}
         self._imap_tokens = {}
         self._active_user = None
         super(StandardMailService, self).__init__()
         self.initializeChildrenServices()
 
     def initializeChildrenServices(self):
-        self.addService(IncomingMailService())
         self.addService(IMAPService(self._soledad_sessions))
+        self.addService(IncomingMailService(self))
         self.addService(SMTPService())
 
     def startService(self):
@@ -299,23 +301,25 @@ class StandardMailService(service.MultiService, HookableService):
 
     def startInstance(self, userid, soledad, keymanager):
         self._soledad_sessions[userid] = soledad
+        self._keymanager_sessions[userid] = keymanager
+
         smtp = self.getServiceNamed('smtp')
         smtp.startInstance(keymanager, userid)
+
+        incoming = self.getServiceNamed('incoming_mail')
+        incoming.startInstance(userid)
 
         def registerIMAPToken(token):
             self._imap_tokens[userid] = token
             self._active_user = userid
             return token
 
-        # TODO ---------- need to rewrite Incoming to --------------------
-        # access soledad_sessions too
-        #incoming = self.getServiceNamed('incoming_mail')
-        #incoming.startInstance(keymanager, soledad, imap_factory, userid)
-        #-----------------------------------------------------------------
-
         d = soledad.get_or_create_service_token('imap')
         d.addCallback(registerIMAPToken)
         return d
+
+    def stopInstance(self):
+        pass
 
     # hooks
 
@@ -340,6 +344,14 @@ class StandardMailService(service.MultiService, HookableService):
             return defer.succeed('NO ACTIVE USER')
         token = self._imap_tokens.get(active_user)
         return defer.succeed("IMAP TOKEN (%s): %s" % (active_user, token))
+
+    # access to containers
+
+    def get_soledad_session(self, userid):
+        return self._soledad_sessions.get(userid)
+
+    def get_keymanager_session(self, userid):
+        return self._keymanager_sessions.get(userid)
 
 
 class IMAPService(service.Service):
@@ -419,12 +431,13 @@ class IncomingMailService(service.Service):
 
     name = 'incoming_mail'
 
-    def __init__(self):
+    def __init__(self, mail_service):
         super(IncomingMailService, self).__init__()
+        self._mail = mail_service
         self._instances = {}
 
     def startService(self):
-        print "Starting dummy IncomingMail Service"
+        print "Starting IncomingMail Service"
         super(IncomingMailService, self).startService()
 
     def stopService(self):
@@ -436,26 +449,28 @@ class IncomingMailService(service.Service):
     # I think we should better model the current Service
     # as a startInstance inside a container, and get this
     # multi-tenant service inside the leap.mail.incoming.service.
+    # ... or just simply make it a multiService and set per-user
+    # instances as Child of this parent.
 
-    def startInstance(self, keymanager, soledad, imap_factory, userid):
+    def startInstance(self, userid):
+        soledad = self._mail.get_soledad_session(userid)
+        keymanager = self._mail.get_keymanager_session(userid)
+
         print "Starting instance for %s" % userid
         self._start_incoming_mail_instance(
-            keymanager, soledad, imap_factory, userid)
+            keymanager, soledad, userid)
 
     def stopInstance(self, userid):
         # TODO toggle offline!
         pass
 
     def _start_incoming_mail_instance(self, keymanager, soledad,
-                                      imap_factory, userid,
-                                      start_sync=True):
+                                      userid, start_sync=True):
 
         def setUpIncomingMail(inbox):
             incoming_mail = IncomingMail(
-                keymanager,
-                soledad,
-                inbox.collection,
-                userid,
+                keymanager, soledad,
+                inbox, userid,
                 check_period=INCOMING_CHECK_PERIOD)
             return incoming_mail
 
@@ -464,8 +479,9 @@ class IncomingMailService(service.Service):
             if start_sync:
                 incoming_instance.startService()
 
-        acc = imap_factory.theAccount
-        d = acc.callWhenReady(lambda _: acc.getMailbox(INBOX_NAME))
+        acc = Account(soledad)
+        d = acc.callWhenReady(
+            lambda _: acc.get_collection_by_mailbox(INBOX_NAME))
         d.addCallback(setUpIncomingMail)
         d.addCallback(registerInstance)
         d.addErrback(lambda f: log.err(f))
