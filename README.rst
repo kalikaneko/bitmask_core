@@ -60,3 +60,13 @@ this can be reused, for instance, to issue per-user tokens to be used in
 authentication for other services (think IMAP, or the thunderbird plugin for
 instance).
 
+Configuration
+-------------
+
+A simple config to get you running (put this in ~/.config/leap/bitmaskd.cfg) ::
+
+  [services]
+  mail = True
+  eip = True
+  zmq = True
+  web = True

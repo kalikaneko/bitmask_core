@@ -19,32 +19,44 @@ Bitmask-core Service.
 """
 import resource
 
-from twisted.application import service
 from twisted.internet import reactor
 from twisted.python import log
 
 from leap.bonafide.service import BonafideService
 
+from leap.bitmask_core import configurable
 from leap.bitmask_core import mail_services
 from leap.bitmask_core import _zmq
 from leap.bitmask_core import websocket
 from leap.bitmask_core._version import get_versions
 
 
-class BitmaskBackend(service.MultiService):
-
-    # TODO move configuration methods to a parent class
+class BitmaskBackend(configurable.ConfigurableService):
 
     def __init__(self, basedir='~/.config/leap'):
 
-        service.MultiService.__init__(self)
+        configurable.ConfigurableService.__init__(self, basedir)
+
         self.init_bonafide()
-        self.init_soledad()
-        self.init_keymanager()
-        self.init_mail()
-        self.init_eip()
-        self.init_zmq()
-        self.init_web()
+
+        mail_service = self.get_config('services', 'mail', False, boolean=True)
+        print "MAIL", mail_service
+        if mail_service:
+            self.init_soledad()
+            self.init_keymanager()
+            self.init_mail()
+
+        eip_service = self.get_config('services', 'eip', False, boolean=True)
+        if eip_service:
+            self.init_eip()
+
+        zmq_service = self.get_config('services', 'zmq', False, boolean=True)
+        if zmq_service:
+            self.init_zmq()
+
+        web_service = self.get_config('services', 'web', False, boolean=True)
+        if web_service:
+            self.init_web()
 
     def init_bonafide(self):
         bf = BonafideService()
