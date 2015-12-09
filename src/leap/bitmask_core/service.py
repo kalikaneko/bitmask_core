@@ -39,46 +39,49 @@ class BitmaskBackend(configurable.ConfigurableService):
 
         self.init_bonafide()
 
-        mail_service = self.get_config('services', 'mail', False, boolean=True)
-        print "MAIL", mail_service
+        mail_service = self.get_config(
+            'services', 'mail', False, boolean=True)
         if mail_service:
             self.init_soledad()
             self.init_keymanager()
             self.init_mail()
 
-        eip_service = self.get_config('services', 'eip', False, boolean=True)
+        eip_service = self.get_config(
+            'services', 'eip', False, boolean=True)
         if eip_service:
             self.init_eip()
 
-        zmq_service = self.get_config('services', 'zmq', False, boolean=True)
+        zmq_service = self.get_config(
+            'services', 'zmq', False, boolean=True)
         if zmq_service:
             self.init_zmq()
 
-        web_service = self.get_config('services', 'web', False, boolean=True)
+        web_service = self.get_config(
+            'services', 'web', False, boolean=True)
         if web_service:
             self.init_web()
 
     def init_bonafide(self):
-        bf = BonafideService()
+        bf = BonafideService(self._basedir)
         bf.setName("bonafide")
         bf.setServiceParent(self)
         bf.register_hook('on_passphrase_entry', trigger='soledad')
         bf.register_hook('on_bonafide_auth', trigger='soledad')
 
     def init_soledad(self):
-        sol = mail_services.SoledadService()
+        sol = mail_services.SoledadService(self._basedir)
         sol.setName("soledad")
         sol.setServiceParent(self)
         sol.register_hook('on_new_soledad_instance', trigger='keymanager')
 
     def init_keymanager(self):
-        km = mail_services.KeymanagerService()
+        km = mail_services.KeymanagerService(self._basedir)
         km.setName("keymanager")
         km.setServiceParent(self)
         km.register_hook('on_new_keymanager_instance', trigger='mail')
 
     def init_mail(self):
-        ms = mail_services.StandardMailService()
+        ms = mail_services.StandardMailService(self._basedir)
         ms.setName("mail")
         ms.setServiceParent(self)
 

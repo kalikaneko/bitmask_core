@@ -4,6 +4,7 @@ Mail services.
 This is quite moving work still.
 This should be moved to the different packages when it stabilizes.
 """
+import json
 import os
 from glob import glob
 from collections import defaultdict
@@ -20,7 +21,7 @@ from leap.mail.imap.service import imap
 from leap.mail.incoming.service import IncomingMail, INCOMING_CHECK_PERIOD
 from leap.mail.smtp import setup_smtp_gateway
 
-from .uuid_map import UserMap
+from leap.bitmask_core.uuid_map import UserMap
 
 
 class Container(object):
@@ -30,6 +31,10 @@ class Container(object):
 
     def get_instance(self, key):
         return self._instances.get(key, None)
+
+
+class ImproperlyConfigured(Exception):
+    pass
 
 
 class HookableService(object):
@@ -83,9 +88,10 @@ def get_all_soledad_uuids():
 
 class SoledadContainer(Container):
 
-    def __init__(self):
-        super(SoledadContainer, self).__init__()
+    def __init__(self, basedir='~/.config/leap'):
+        self._basedir = os.path.expanduser(basedir)
         self._usermap = UserMap()
+        super(SoledadContainer, self).__init__()
 
     def add_instance(self, userid, passphrase, uuid=None, token=None):
 
@@ -99,15 +105,13 @@ class SoledadContainer(Container):
 
         user, provider = userid.split('@')
 
-        # TODO automate bootstrapping stuff
-        # TODO consolidate canonical factory
+        soledad_path = os.path.join(self._basedir, 'soledad')
+        soledad_url = self._get_soledad_uri(provider)
+        cert_path = _get_ca_cert_path(self._basedir, provider)
 
         soledad = self._create_soledad_instance(
-            uuid, passphrase, '/tmp/soledad',
-            'https://goldeneye.cdev.bitmask.net:2323',
-            os.path.expanduser(
-                '~/.config/leap/providers/%s/keys/ca/cacert.pem' % provider),
-            token)
+            uuid, passphrase, soledad_path, soledad_url,
+            cert_path, token)
 
         self._instances[userid] = soledad
 
@@ -115,6 +119,22 @@ class SoledadContainer(Container):
         data = {'user': userid, 'uuid': uuid, 'token': token,
                 'soledad': soledad}
         notify_hooked_services(this_hook, self.service, **data)
+
+    def _get_soledad_uri(self, provider):
+        soledad_config = os.path.join(
+            self._basedir, 'providers', provider, 'soledad-service.json')
+        try:
+            with open(soledad_config) as config:
+                config = json.loads(config.read())
+        except IOError:
+            raise ImproperlyConfigured('could not open config file')
+
+        servers = config['hosts'].keys()
+        choice = config['hosts'][servers[0]]
+
+        url = 'https://{hostname}:{port}'.format(
+            hostname=choice['hostname'], port=choice['port'])
+        return url
 
     def _create_soledad_instance(self, uuid, passphrase, basedir, server_url,
                                  cert_file, token):
@@ -156,6 +176,10 @@ class SoledadService(service.Service, HookableService):
 
     subscribed_to_hooks = ('on_bonafide_auth', 'on_passphrase_entry')
 
+    def __init__(self, basedir):
+        service.Service.__init__(self)
+        self._basedir = basedir
+
     def startService(self):
         print "Starting Soledad Service"
         self._container = SoledadContainer()
@@ -189,12 +213,11 @@ class SoledadService(service.Service, HookableService):
 
 class KeymanagerContainer(Container):
 
-    # TODO this should replace code in soledadbootstrapper
+    def __init__(self, basedir):
+        self._basedir = os.path.expanduser(basedir)
+        super(KeymanagerContainer, self).__init__()
 
     def add_instance(self, userid, token, uuid, soledad):
-
-        # TODO automate bootstrapping stuff
-        # TODO consolidate canonical factory
 
         keymanager = self._create_keymanager_instance(
             userid, token, uuid, soledad)
@@ -211,32 +234,43 @@ class KeymanagerContainer(Container):
     def _create_keymanager_instance(self, userid, token, uuid, soledad):
         user, provider = userid.split('@')
 
-        nickserver_uri = "https://nicknym.%s:6425" % provider
-        api_uri = "https://api.%s:4430" % provider
+        nickserver_uri = self._get_nicknym_uri(provider)
 
-        cert_file = os.path.expanduser(
-            '~/.config/leap/providers/%s/keys/ca/cacert.pem' % provider)
+        cert_path = _get_ca_cert_path(self._basedir, provider)
+        api_uri = self._get_api_uri(provider)
 
         km_args = (userid, nickserver_uri, soledad)
         km_kwargs = {
-            "token": token,
-            "uid": uuid,
-            "api_uri": api_uri,
-            "api_version": "1",
-            "ca_cert_path": cert_file,
+            "token": token, "uid": uuid,
+            "api_uri": api_uri, "api_version": "1",
+            "ca_cert_path": cert_path,
             "gpgbinary": "/usr/bin/gpg"
         }
         keymanager = KeyManager(*km_args, **km_kwargs)
         return keymanager
+
+    def _get_api_uri(self, provider):
+        # TODO get this from service.json
+        api_uri = "https://api.{provider}:4430".format(
+            provider=provider)
+        return api_uri
+
+    def _get_nicknym_uri(self, provider):
+        return 'https://nicknym.{provider}:6425'.format(
+            provider=provider)
 
 
 class KeymanagerService(service.Service, HookableService):
 
     subscribed_to_hooks = ('on_new_soledad_instance',)
 
+    def __init__(self, basedir='~/.config/leap'):
+        service.Service.__init__(self)
+        self._basedir = basedir
+
     def startService(self):
         print "Starting Keymanager Service"
-        self._container = KeymanagerContainer()
+        self._container = KeymanagerContainer(self._basedir)
         self._container.service = self
         super(KeymanagerService, self).startService()
 
@@ -484,5 +518,11 @@ class IncomingMailService(service.Service):
             lambda _: acc.get_collection_by_mailbox(INBOX_NAME))
         d.addCallback(setUpIncomingMail)
         d.addCallback(registerInstance)
-        d.addErrback(lambda f: log.err(f))
+        d.addErrback(log.err)
         return d
+
+
+def _get_ca_cert_path(basedir, provider):
+    path = os.path.join(
+        basedir, 'providers', provider, 'keys', 'ca', 'cacert.pem')
+    return path

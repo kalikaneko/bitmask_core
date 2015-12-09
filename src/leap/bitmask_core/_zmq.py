@@ -46,6 +46,9 @@ class ZMQDispatcher(service.Service):
 
 class _DispatcherREPConnection(ZmqREPConnection):
 
+    # XXX this should inherit from a common dispatcher,
+    # or receive a generic dispatcher instance
+
     def __init__(self, zf, e, core):
         ZmqREPConnection.__init__(self, zf, e)
         self.core = core
