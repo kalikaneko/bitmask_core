@@ -8,6 +8,7 @@ import json
 import os
 from glob import glob
 from collections import defaultdict
+from collections import namedtuple
 
 from twisted.application import service
 from twisted.internet import defer
@@ -106,7 +107,7 @@ class SoledadContainer(Container):
         user, provider = userid.split('@')
 
         soledad_path = os.path.join(self._basedir, 'soledad')
-        soledad_url = self._get_soledad_uri(provider)
+        soledad_url = _get_soledad_uri(self._basedir, provider)
         cert_path = _get_ca_cert_path(self._basedir, provider)
 
         soledad = self._create_soledad_instance(
@@ -119,22 +120,6 @@ class SoledadContainer(Container):
         data = {'user': userid, 'uuid': uuid, 'token': token,
                 'soledad': soledad}
         notify_hooked_services(this_hook, self.service, **data)
-
-    def _get_soledad_uri(self, provider):
-        soledad_config = os.path.join(
-            self._basedir, 'providers', provider, 'soledad-service.json')
-        try:
-            with open(soledad_config) as config:
-                config = json.loads(config.read())
-        except IOError:
-            raise ImproperlyConfigured('could not open config file')
-
-        servers = config['hosts'].keys()
-        choice = config['hosts'][servers[0]]
-
-        url = 'https://{hostname}:{port}'.format(
-            hostname=choice['hostname'], port=choice['port'])
-        return url
 
     def _create_soledad_instance(self, uuid, passphrase, basedir, server_url,
                                  cert_file, token):
@@ -286,13 +271,6 @@ class KeymanagerService(service.Service, HookableService):
             container.add_instance(user, token, uuid, soledad)
 
 
-
-class MailAccountContainer(Container):
-
-    def add_instance(self, userid, soledad, keymanager):
-        pass
-
-
 class StandardMailService(service.MultiService, HookableService):
     """
     A collection of Services.
@@ -311,7 +289,8 @@ class StandardMailService(service.MultiService, HookableService):
 
     subscribed_to_hooks = ('on_new_keymanager_instance',)
 
-    def __init__(self):
+    def __init__(self, basedir):
+        self._basedir = basedir
         self._soledad_sessions = {}
         self._keymanager_sessions = {}
         self._imap_tokens = {}
@@ -326,8 +305,6 @@ class StandardMailService(service.MultiService, HookableService):
 
     def startService(self):
         print "Starting Mail Service..."
-        self._container = MailAccountContainer()
-        self._container.service = self
         super(StandardMailService, self).startService()
 
     def stopService(self):
@@ -421,9 +398,10 @@ class SMTPService(service.Service):
     # TODO -- the offline service (ie, until BONAFIDE REMOTE
     # has been authenticated) should expose a dummy SMTP account.
 
-    def __init__(self):
-        super(SMTPService, self).__init__()
+    def __init__(self, basedir='~/.config/leap'):
+        self._basedir = os.path.expanduser(basedir)
         self._instances = {}
+        super(SMTPService, self).__init__()
 
     def startService(self):
         print "Starting dummy SMTP Service"
@@ -436,20 +414,24 @@ class SMTPService(service.Service):
     # Individual accounts
 
     def startInstance(self, keymanager, userid):
-        # TODO automate bootstrapping stuff
-        # TODO consolidate canonical factory
+        # TODO ---> this should move to startServer, and we need
+        # per-user authentication for smtp service.
+
         user, provider = userid.split('@')
-        host = 'cowbird.cdev.bitmask.net'
-        remote_port = 465
-        client_cert_path = os.path.expanduser(
-            '~/.config/leap/providers/dev.bitmask.net/'
-            'keys/client/stmp_%s.pem' % user)
+
+        smtp_provider = _get_provider_for_service(
+            'smtp', self._basedir, provider)
+        client_cert_path = _get_smtp_client_cert_path(
+                self._basedir, provider, userid)
+
+        host = smtp_provider.hostname
+        remote_port = smtp_provider.port
+
         service, port = setup_smtp_gateway(
             port=2013,
-            userid=userid,
+            userid=str(userid),
             keymanager=keymanager,
-            smtp_host=host,
-            smtp_port=remote_port,
+            smtp_host=str(host), smtp_port=remote_port,
             smtp_cert=unicode(client_cert_path),
             smtp_key=unicode(client_cert_path),
             encrypted_only=False)
@@ -521,8 +503,86 @@ class IncomingMailService(service.Service):
         d.addErrback(log.err)
         return d
 
+# --------------------------------------------------------------------
+#
+# config utilities. should be moved to bonafide
+#
+
+SERVICES = ('soledad', 'smtp', 'eip')
+
+
+Provider = namedtuple(
+    'Provider', ['hostname', 'ip_address', 'location', 'port'])
+
 
 def _get_ca_cert_path(basedir, provider):
     path = os.path.join(
         basedir, 'providers', provider, 'keys', 'ca', 'cacert.pem')
     return path
+
+
+def _get_smtp_client_cert_path(basedir, provider, userid):
+    path = os.path.join(
+        basedir, 'providers', provider, 'keys', 'client', 'stmp_%s.pem' %
+        userid)
+    return path
+
+
+def _get_config_for_service(service, basedir, provider):
+    if service not in SERVICES:
+        raise ImproperlyConfigured('Tried to use an unknown service')
+
+    config_path = os.path.join(
+        basedir, 'providers', provider, '%s-service.json' % service)
+    try:
+        with open(config_path) as config:
+            config = json.loads(config.read())
+    except IOError:
+        raise ImproperlyConfigured('could not open config file')
+    else:
+        return config
+
+
+def first(xs):
+    return xs[0]
+
+
+def _pick_server(config, strategy=first):
+    """
+    Picks a server from a list of possible choices.
+    The service files have a  <describe>.
+    This implementation just picks the FIRST available server.
+    """
+    servers = config['hosts'].keys()
+    choice = config['hosts'][strategy(servers)]
+    return choice
+
+
+def _get_subdict(d, keys):
+    return {key: d.get(key) for key in keys}
+
+
+def _get_provider_for_service(service, basedir, provider):
+
+    if service not in SERVICES:
+        raise ImproperlyConfigured('Tried to use an unknown service')
+
+    config = _get_config_for_service(service, basedir, provider)
+    p = _pick_server(config)
+    attrs = _get_subdict(p, ('hostname', 'ip_address', 'location', 'port'))
+    provider = Provider(**attrs)
+    return provider
+
+
+def _get_smtp_uri(basedir, provider):
+    prov = _get_provider_for_service('smtp', basedir, provider)
+    url = 'https://{hostname}:{port}'.format(
+        hostname=prov.hostname, port=prov.port)
+    return url
+
+
+def _get_soledad_uri(basedir, provider):
+    prov = _get_provider_for_service('soledad', basedir, provider)
+    url = 'https://{hostname}:{port}'.format(
+        hostname=prov.hostname, port=prov.port)
+    return url

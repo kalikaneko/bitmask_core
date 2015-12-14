@@ -62,26 +62,26 @@ class BitmaskBackend(configurable.ConfigurableService):
             self.init_web()
 
     def init_bonafide(self):
-        bf = BonafideService(self._basedir)
+        bf = BonafideService(self.basedir)
         bf.setName("bonafide")
         bf.setServiceParent(self)
         bf.register_hook('on_passphrase_entry', trigger='soledad')
         bf.register_hook('on_bonafide_auth', trigger='soledad')
 
     def init_soledad(self):
-        sol = mail_services.SoledadService(self._basedir)
+        sol = mail_services.SoledadService(self.basedir)
         sol.setName("soledad")
         sol.setServiceParent(self)
         sol.register_hook('on_new_soledad_instance', trigger='keymanager')
 
     def init_keymanager(self):
-        km = mail_services.KeymanagerService(self._basedir)
+        km = mail_services.KeymanagerService(self.basedir)
         km.setName("keymanager")
         km.setServiceParent(self)
         km.register_hook('on_new_keymanager_instance', trigger='mail')
 
     def init_mail(self):
-        ms = mail_services.StandardMailService(self._basedir)
+        ms = mail_services.StandardMailService(self.basedir)
         ms.setName("mail")
         ms.setServiceParent(self)
 
