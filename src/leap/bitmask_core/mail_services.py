@@ -20,7 +20,7 @@ from leap.mail.constants import INBOX_NAME
 from leap.mail.mail import Account
 from leap.mail.imap.service import imap
 from leap.mail.incoming.service import IncomingMail, INCOMING_CHECK_PERIOD
-from leap.mail.smtp import setup_smtp_gateway
+from leap.mail import smtp
 
 from leap.bitmask_core.uuid_map import UserMap
 
@@ -293,6 +293,7 @@ class StandardMailService(service.MultiService, HookableService):
         self._basedir = basedir
         self._soledad_sessions = {}
         self._keymanager_sessions = {}
+        self._sendmail_opts = {}
         self._imap_tokens = {}
         self._active_user = None
         super(StandardMailService, self).__init__()
@@ -301,7 +302,9 @@ class StandardMailService(service.MultiService, HookableService):
     def initializeChildrenServices(self):
         self.addService(IMAPService(self._soledad_sessions))
         self.addService(IncomingMailService(self))
-        self.addService(SMTPService())
+        self.addService(SMTPService(
+            self._soledad_sessions, self._keymanager_sessions,
+            self._sendmail_opts))
 
     def startService(self):
         print "Starting Mail Service..."
@@ -311,11 +314,15 @@ class StandardMailService(service.MultiService, HookableService):
         super(StandardMailService, self).stopService()
 
     def startInstance(self, userid, soledad, keymanager):
+        username, provider = userid.split('@')
+
         self._soledad_sessions[userid] = soledad
         self._keymanager_sessions[userid] = keymanager
 
-        smtp = self.getServiceNamed('smtp')
-        smtp.startInstance(keymanager, userid)
+        print "KEYM SESSIONS (on Service)", self._keymanager_sessions
+
+        sendmail_opts = _get_sendmail_opts(self._basedir, provider, username)
+        self._sendmail_opts[userid] = sendmail_opts
 
         incoming = self.getServiceNamed('incoming_mail')
         incoming.startInstance(userid)
@@ -340,6 +347,8 @@ class StandardMailService(service.MultiService, HookableService):
         userid = kw['userid']
         soledad = kw['soledad']
         keymanager = kw['keymanager']
+
+        print "ADDING NEW KEYMANAGER INSTANCE FOR", userid
         self.startInstance(userid, soledad, keymanager)
 
     # commands
@@ -398,9 +407,17 @@ class SMTPService(service.Service):
     # TODO -- the offline service (ie, until BONAFIDE REMOTE
     # has been authenticated) should expose a dummy SMTP account.
 
-    def __init__(self, basedir='~/.config/leap'):
+    def __init__(self, soledad_sessions, keymanager_sessions, sendmail_opts,
+                 basedir='~/.config/leap'):
+
         self._basedir = os.path.expanduser(basedir)
-        self._instances = {}
+        port, factory = smtp.run_service(
+            soledad_sessions, keymanager_sessions, sendmail_opts)
+        self._port = port
+        self._factory = factory
+        self._soledad_sessions = soledad_sessions
+        self._keymanager_sessions = keymanager_sessions
+        self._sendmail_opts = sendmail_opts
         super(SMTPService, self).__init__()
 
     def startService(self):
@@ -410,37 +427,6 @@ class SMTPService(service.Service):
     def stopService(self):
         # TODO cleanup all instances
         super(SMTPService, self).stopService()
-
-    # Individual accounts
-
-    def startInstance(self, keymanager, userid):
-        # TODO ---> this should move to startServer, and we need
-        # per-user authentication for smtp service.
-
-        user, provider = userid.split('@')
-
-        smtp_provider = _get_provider_for_service(
-            'smtp', self._basedir, provider)
-        client_cert_path = _get_smtp_client_cert_path(
-                self._basedir, provider, userid)
-
-        host = smtp_provider.hostname
-        remote_port = smtp_provider.port
-
-        service, port = setup_smtp_gateway(
-            port=2013,
-            userid=str(userid),
-            keymanager=keymanager,
-            smtp_host=str(host), smtp_port=remote_port,
-            smtp_cert=unicode(client_cert_path),
-            smtp_key=unicode(client_cert_path),
-            encrypted_only=False)
-        self._instances[userid] = service, port
-
-    def stopInstance(self, userid):
-        port, factory = self._instances[userid]
-        port.stopListening()
-        factory.doStop()
 
 
 class IncomingMailService(service.Service):
@@ -514,11 +500,24 @@ SERVICES = ('soledad', 'smtp', 'eip')
 Provider = namedtuple(
     'Provider', ['hostname', 'ip_address', 'location', 'port'])
 
+SendmailOpts = namedtuple(
+    'SendmailOpts', ['cert', 'key', 'hostname', 'port'])
+
 
 def _get_ca_cert_path(basedir, provider):
     path = os.path.join(
         basedir, 'providers', provider, 'keys', 'ca', 'cacert.pem')
     return path
+
+
+def _get_sendmail_opts(basedir, provider, userid):
+    cert = _get_smtp_client_cert_path(basedir, provider, userid)
+    key = cert
+    prov = _get_provider_for_service('smtp', basedir, provider)
+    hostname = prov.hostname
+    port = prov.port
+    opts = SendmailOpts(cert, key, hostname, port)
+    return opts
 
 
 def _get_smtp_client_cert_path(basedir, provider, userid):
