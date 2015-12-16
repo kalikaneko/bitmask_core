@@ -373,6 +373,15 @@ class StandardMailService(service.MultiService, HookableService):
         token = self._imap_tokens.get(active_user)
         return defer.succeed("IMAP TOKEN (%s): %s" % (active_user, token))
 
+    def get_smtp_token(self):
+        # TODO this should have some kind of previous authentication with
+        # whatever communication channel we're using.
+        active_user = self._active_user
+        if not active_user:
+            return defer.succeed('NO ACTIVE USER')
+        token = self._smtp_tokens.get(active_user)
+        return defer.succeed("SMTP TOKEN (%s): %s" % (active_user, token))
+
     def do_get_smtp_cert_path(self, userid):
         username, provider = userid.split('@')
         return _get_smtp_client_cert_path(self._basedir, provider, username)

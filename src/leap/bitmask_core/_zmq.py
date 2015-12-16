@@ -104,6 +104,11 @@ class _DispatcherREPConnection(ZmqREPConnection):
                 d.addCallback(lambda r: self.defer_reply(r, msgId))
                 d.addErrback(lambda f: self.log_err(f, msgId))
 
+            elif subcmd == 'get_smtp_token':
+                d = m.get_smtp_token()
+                d.addCallback(lambda r: self.defer_reply(r, msgId))
+                d.addErrback(lambda f: self.log_err(f, msgId))
+
             elif subcmd == 'get_smtp_certificate':
                 # TODO should ask for confirmation? like --force or something,
                 # if we already have a valid one. or better just refuse if cert
