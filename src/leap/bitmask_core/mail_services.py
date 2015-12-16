@@ -295,6 +295,7 @@ class StandardMailService(service.MultiService, HookableService):
         self._keymanager_sessions = {}
         self._sendmail_opts = {}
         self._imap_tokens = {}
+        self._smtp_tokens = {}
         self._active_user = None
         super(StandardMailService, self).__init__()
         self.initializeChildrenServices()
@@ -332,8 +333,15 @@ class StandardMailService(service.MultiService, HookableService):
             self._active_user = userid
             return token
 
+        def registerSMTPToken(token):
+            self._smtp_tokens[userid] = token
+            return token
+
         d = soledad.get_or_create_service_token('imap')
         d.addCallback(registerIMAPToken)
+        d.addCallback(
+            lambda _: soledad.get_or_create_service_token('smtp'))
+        d.addCallback(registerSMTPToken)
         return d
 
     def stopInstance(self):
