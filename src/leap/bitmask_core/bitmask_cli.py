@@ -203,6 +203,9 @@ def send_command(cli):
         if subargs.get_imap_token:
             data = ("mail", "get_imap_token")
 
+        if subargs.get_smtp_certificate:
+            data = ("mail", "get_smtp_certificate")
+
     s = get_zmq_connection()
     try:
         d = s.sendMsg(*data)

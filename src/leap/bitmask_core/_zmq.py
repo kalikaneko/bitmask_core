@@ -19,7 +19,7 @@ ZMQ REQ-REP Dispatcher.
 """
 
 from twisted.application import service
-from twisted.internet import reactor
+from twisted.internet import defer, reactor
 from twisted.python import log
 
 from txzmq import ZmqEndpoint, ZmqFactory, ZmqREPConnection
@@ -56,25 +56,28 @@ class _DispatcherREPConnection(ZmqREPConnection):
     def gotMessage(self, msgId, *parts):
 
         cmd = parts[0]
+        m = self._get_service('mail')
+        bf = self._get_service('bonafide')
+
 
         if cmd == 'stats':
             r = self.core.do_stats()
             self.defer_reply(r, msgId)
 
-        if cmd == 'status':
+        elif cmd == 'status':
             r = self.core.do_status()
             self.defer_reply(r, msgId)
 
-        if cmd == 'version':
+        elif cmd == 'version':
             r = self.core.do_version()
             self.defer_reply(r, msgId)
 
-        if cmd == 'shutdown':
+        elif cmd == 'shutdown':
             r = 'ok, shutting down...'
             self.defer_reply(r, msgId)
             self.do_shutdown()
 
-        if cmd == 'user':
+        elif cmd == 'user':
             subcmd = parts[1]
             user, password = parts[2], parts[3]
 
@@ -89,21 +92,43 @@ class _DispatcherREPConnection(ZmqREPConnection):
             d.addCallback(lambda r: self.defer_reply(r, msgId))
             d.addErrback(lambda f: self.log_err(f, msgId))
 
-        if cmd == 'mail':
+        elif cmd == 'mail':
             subcmd = parts[1]
-
-            m = self._get_service('mail')
 
             if subcmd == 'status':
                 r = m.do_status()
                 self.defer_reply(r, msgId)
 
-            if subcmd == 'get_imap_token':
+            elif subcmd == 'get_imap_token':
                 d = m.get_imap_token()
                 d.addCallback(lambda r: self.defer_reply(r, msgId))
                 d.addErrback(lambda f: self.log_err(f, msgId))
 
-        if cmd == 'eip':
+            elif subcmd == 'get_smtp_certificate':
+                # TODO should ask for confirmation? like --force or something,
+                # if we already have a valid one. or better just refuse if cert
+                # exists.
+                # TODO how should we pass the userid??
+                # - Keep an 'active' user in bonafide (last authenticated)
+                # (doing it now)
+                # - Get active user from Mail Service (maybe preferred?)
+                # - Have a command/method to set 'active' user.
+
+                @defer.inlineCallbacks
+                def save_cert(cert_data):
+                    userid, cert_str = cert_data
+                    cert_path = yield m.do_get_smtp_cert_path(userid)
+                    print 'saving to cert_path', cert_path
+                    with open(cert_path, 'w') as outf:
+                        outf.write(cert_str)
+                    defer.returnValue('certificate saved to %s' % cert_path)
+
+                d = bf.do_get_smtp_cert()
+                d.addCallback(save_cert)
+                d.addCallback(lambda r: self.defer_reply(r, msgId))
+                d.addErrback(lambda f: self.log_err(f, msgId))
+
+        elif cmd == 'eip':
             subcmd = parts[1]
 
             eip = self._get_service('eip')

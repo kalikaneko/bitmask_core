@@ -365,6 +365,10 @@ class StandardMailService(service.MultiService, HookableService):
         token = self._imap_tokens.get(active_user)
         return defer.succeed("IMAP TOKEN (%s): %s" % (active_user, token))
 
+    def do_get_smtp_cert_path(self, userid):
+        username, provider = userid.split('@')
+        return _get_smtp_client_cert_path(self._basedir, provider, username)
+
     # access to containers
 
     def get_soledad_session(self, userid):
@@ -510,8 +514,8 @@ def _get_ca_cert_path(basedir, provider):
     return path
 
 
-def _get_sendmail_opts(basedir, provider, userid):
-    cert = _get_smtp_client_cert_path(basedir, provider, userid)
+def _get_sendmail_opts(basedir, provider, username):
+    cert = _get_smtp_client_cert_path(basedir, provider, username)
     key = cert
     prov = _get_provider_for_service('smtp', basedir, provider)
     hostname = prov.hostname
@@ -520,10 +524,10 @@ def _get_sendmail_opts(basedir, provider, userid):
     return opts
 
 
-def _get_smtp_client_cert_path(basedir, provider, userid):
+def _get_smtp_client_cert_path(basedir, provider, username):
     path = os.path.join(
         basedir, 'providers', provider, 'keys', 'client', 'stmp_%s.pem' %
-        userid)
+        username)
     return path
 
 
