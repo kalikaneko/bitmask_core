@@ -37,28 +37,27 @@ class BitmaskBackend(configurable.ConfigurableService):
 
         configurable.ConfigurableService.__init__(self, basedir)
 
+        conf = self.get_config
+
         self.init_bonafide()
 
-        mail_service = self.get_config(
-            'services', 'mail', False, boolean=True)
-        if mail_service:
+        do_mail = conf('services', 'mail', False, boolean=True)
+        if do_mail:
             self.init_soledad()
             self.init_keymanager()
             self.init_mail()
 
-        eip_service = self.get_config(
-            'services', 'eip', False, boolean=True)
-        if eip_service:
+        do_eip = conf('services', 'eip', False, boolean=True)
+        if do_eip:
             self.init_eip()
 
-        zmq_service = self.get_config(
-            'services', 'zmq', False, boolean=True)
-        if zmq_service:
+        do_zmq = conf('services', 'zmq', False, boolean=True)
+        if do_zmq:
             self.init_zmq()
 
-        web_service = self.get_config(
+        do_web = self.get_config(
             'services', 'web', False, boolean=True)
-        if web_service:
+        if do_web:
             self.init_web()
 
     def init_bonafide(self):
