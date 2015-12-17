@@ -24,6 +24,7 @@ import re
 import sys
 
 from twisted.application import service
+from twisted.python import log
 
 from leap.common import files
 
@@ -41,9 +42,11 @@ class ConfigurableService(service.MultiService):
     def __init__(self, basedir='~/.config/leap'):
         service.MultiService.__init__(self)
 
-        self.basedir = os.path.expanduser(basedir)
-        if not os.path.isdir(basedir):
-            files.mkdir_p(basedir)
+        path = os.path.abspath(os.path.expanduser(basedir))
+        if not os.path.isdir(path):
+            print "CREATING...", path
+            files.mkdir_p(path)
+        self.basedir = path
 
         # creates self.config
         self.read_config()
@@ -74,12 +77,28 @@ class ConfigurableService(service.MultiService):
         self.config = ConfigParser.SafeConfigParser()
         bitmaskd_cfg = os.path.join(self.basedir, self.config_file)
 
+        if not os.path.isfile(bitmaskd_cfg):
+            self._create_default_config(bitmaskd_cfg)
+
         try:
             with open(bitmaskd_cfg, "rb") as f:
                 self.config.readfp(f)
         except EnvironmentError:
             if os.path.exists(bitmaskd_cfg):
                 raise
+
+    def _create_default_config(self, path):
+        with open(path, 'w') as outf:
+            outf.write(DEFAULT_CONFIG)
+
+
+DEFAULT_CONFIG = """
+[services]
+mail = True
+eip = True
+zmq = True
+web = False
+"""
 
 
 def canonical_encoding(encoding):
@@ -108,6 +127,7 @@ def check_encoding(encoding):
 filesystem_encoding = None
 io_encoding = None
 is_unicode_platform = False
+
 
 def _reload():
     global filesystem_encoding, io_encoding, is_unicode_platform
