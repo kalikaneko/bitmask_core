@@ -365,8 +365,6 @@ class StandardMailService(service.MultiService, HookableService):
         return 'mail: %s' % 'running' if self.running else 'disabled'
 
     def get_imap_token(self):
-        # TODO this should have some kind of previous authentication with
-        # whatever communication channel we're using.
         active_user = self._active_user
         if not active_user:
             return defer.succeed('NO ACTIVE USER')
@@ -374,8 +372,6 @@ class StandardMailService(service.MultiService, HookableService):
         return defer.succeed("IMAP TOKEN (%s): %s" % (active_user, token))
 
     def get_smtp_token(self):
-        # TODO this should have some kind of previous authentication with
-        # whatever communication channel we're using.
         active_user = self._active_user
         if not active_user:
             return defer.succeed('NO ACTIVE USER')
@@ -421,13 +417,6 @@ class SMTPService(service.Service):
 
     name = 'smtp'
 
-    # TODO --- this needs to allow authentication,
-    # to be able to expose the SAME service for different
-    # accounts.
-
-    # TODO -- the offline service (ie, until BONAFIDE REMOTE
-    # has been authenticated) should expose a dummy SMTP account.
-
     def __init__(self, soledad_sessions, keymanager_sessions, sendmail_opts,
                  basedir='~/.config/leap'):
 
@@ -442,7 +431,7 @@ class SMTPService(service.Service):
         super(SMTPService, self).__init__()
 
     def startService(self):
-        print "Starting dummy SMTP Service"
+        print "Starting SMTP Service"
         super(SMTPService, self).startService()
 
     def stopService(self):

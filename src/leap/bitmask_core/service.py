@@ -30,6 +30,8 @@ from leap.bitmask_core import _zmq
 from leap.bitmask_core import websocket
 from leap.bitmask_core._version import get_versions
 
+from leap.common.events import server as event_server
+
 
 class BitmaskBackend(configurable.ConfigurableService):
 
@@ -39,6 +41,7 @@ class BitmaskBackend(configurable.ConfigurableService):
 
         conf = self.get_config
 
+        self.init_events()
         self.init_bonafide()
 
         do_mail = conf('services', 'mail', False, boolean=True)
@@ -59,6 +62,9 @@ class BitmaskBackend(configurable.ConfigurableService):
             'services', 'web', False, boolean=True)
         if do_web:
             self.init_web()
+
+    def init_events(self):
+        event_server.ensure_server()
 
     def init_bonafide(self):
         bf = BonafideService(self.basedir)
