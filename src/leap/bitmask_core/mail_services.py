@@ -320,8 +320,6 @@ class StandardMailService(service.MultiService, HookableService):
         self._soledad_sessions[userid] = soledad
         self._keymanager_sessions[userid] = keymanager
 
-        print "KEYM SESSIONS (on Service)", self._keymanager_sessions
-
         sendmail_opts = _get_sendmail_opts(self._basedir, provider, username)
         self._sendmail_opts[userid] = sendmail_opts
 
@@ -356,6 +354,7 @@ class StandardMailService(service.MultiService, HookableService):
         soledad = kw['soledad']
         keymanager = kw['keymanager']
 
+        # TODO --- only start instance if "autostart" is True.
         print "ADDING NEW KEYMANAGER INSTANCE FOR", userid
         self.startInstance(userid, soledad, keymanager)
 
