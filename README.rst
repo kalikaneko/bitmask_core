@@ -70,3 +70,27 @@ A simple config to get you running (put this in ~/.config/leap/bitmaskd.cfg) ::
   eip = True
   zmq = True
   web = True
+
+Development
+-----------
+
+You need a bunch of leap.* dependencies. Since this is a work in progress, there
+are no released versions for all of them.
+
+You can either install them with the 'external' option to pip, or if you want to
+work on several modules at the same time, check out the repos and run them in
+development mode inside your virtualenv::
+
+* leap.common https://github.com/leapcode/leap_pycommon.git
+* leap.keymanager https://github.com/leapcode/keymanager.git
+* leap.mail https://github.com/leapcode/leap_mail.git
+* leap.soledad.common https://github.com/leapcode/soledad.git
+* leap.soledad.client https://github.com/leapcode/soledad.git
+* leap.bonafide https://github.com/kalikaneko/bonafide.git
+* leap.vpn https://github.com/ivanalejandro0/leap_vpn.git
+
+Beware that, since *leap* is a namespace package, things will break in your
+virtualenv if you try to install any of these dependencies via the pypi package.
+If you find some weird import error related to the leap.* packages, just pip
+uninstall any problematic dependency, and try with 'python setup.py develop'
+from the git repo for each one of them.
