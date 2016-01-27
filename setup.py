@@ -60,7 +60,7 @@ try:
 except Exception:
     long_description = ""
 
-bitmask_cli = 'bitmask_cli=leap.bitmask_core.bitmask_cli'
+bitmask_cli = 'bitmask_cli=leap.bitmask_core.bitmask_cli:main'
 
 setup(
     name='leap.bitmask_core',
