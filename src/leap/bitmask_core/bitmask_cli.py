@@ -27,9 +27,12 @@ from colorama import init as color_init
 from colorama import Fore
 from twisted.internet import reactor
 from txzmq import ZmqEndpoint, ZmqFactory, ZmqREQConnection
+from txzmq import ZmqRequestTimeoutError
 import zmq
 
-from leap.bonafide import config
+# from leap.bonafide import config
+# this is defined on bonafide config
+ENDPOINT = "ipc:///tmp/bonafide.sock"
 
 
 class BitmaskCLI(object):
@@ -146,7 +149,8 @@ GENERAL COMMANDS:
 
 def get_zmq_connection():
     zf = ZmqFactory()
-    e = ZmqEndpoint('connect', config.ENDPOINT)
+    # e = ZmqEndpoint('connect', config.ENDPOINT)
+    e = ZmqEndpoint('connect', ENDPOINT)
     return ZmqREQConnection(zf, e)
 
 
@@ -156,6 +160,12 @@ def error(msg, stop=False):
         reactor.stop()
     else:
         sys.exit(1)
+
+
+def timeout_handler(failure, stop_reactor=True):
+    if failure.trap(ZmqRequestTimeoutError) == ZmqRequestTimeoutError:
+        print Fore.RED + "[ERROR] timeout contacting the server" + Fore.RESET
+        reactor.stop()
 
 
 def do_print(stuff):
@@ -224,11 +234,17 @@ def send_command(cli):
 
     s = get_zmq_connection()
     try:
-        d = s.sendMsg(*data)
+        # timeout on 1sec since the server is local and it should respond far
+        # quickly than that.
+        d = s.sendMsg(*data, timeout=1)
     except zmq.error.Again:
+        # NOTE: I'm not sure on which case we get to this point
+        # If the server is down we catch it on `timeout_handler`
         print Fore.RED + "[ERROR] Server is down" + Fore.RESET
+
     d.addCallback(cb)
     d.addCallback(lambda x: reactor.stop())
+    d.addErrback(timeout_handler)
 
 
 def main():
