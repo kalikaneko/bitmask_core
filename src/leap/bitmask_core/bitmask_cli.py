@@ -164,7 +164,8 @@ def error(msg, stop=False):
 
 def timeout_handler(failure, stop_reactor=True):
     if failure.trap(ZmqRequestTimeoutError) == ZmqRequestTimeoutError:
-        print Fore.RED + "[ERROR] timeout contacting the server" + Fore.RESET
+        print (Fore.RED + "[ERROR] Timeout contacting the bitmask daemon. "
+               "Is it running?" + Fore.RESET)
         reactor.stop()
 
 
