@@ -546,7 +546,9 @@ def _get_config_for_service(service, basedir, provider):
         with open(config_path) as config:
             config = json.loads(config.read())
     except IOError:
-        raise ImproperlyConfigured('could not open config file')
+        # FIXME might be that the provider DOES NOT offer this service!
+        raise ImproperlyConfigured(
+            'could not open config file %s' % config_path)
     else:
         return config
 

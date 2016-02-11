@@ -67,6 +67,9 @@ class BitmaskBackend(configurable.ConfigurableService):
         bf = BonafideService(self.basedir)
         bf.setName("bonafide")
         bf.setServiceParent(self)
+        # TODO ---- these hooks should be activated only if 
+        # (1) we have enabled that service
+        # (2) provider offers this service
         bf.register_hook('on_passphrase_entry', trigger='soledad')
         bf.register_hook('on_bonafide_auth', trigger='soledad')
 
