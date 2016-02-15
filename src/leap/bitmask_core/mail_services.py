@@ -14,6 +14,7 @@ from twisted.application import service
 from twisted.internet import defer
 from twisted.python import log
 
+from leap.bonafide import config
 from leap.keymanager import KeyManager
 from leap.soledad.client.api import Soledad
 from leap.mail.constants import INBOX_NAME
@@ -157,6 +158,11 @@ class SoledadContainer(Container):
         self.get_instance(userid).sync()
 
 
+def _get_provider_from_full_userid(userid):
+    _, provider_id = config.get_username_and_provider(userid)
+    return config.Provider(provider_id)
+
+
 class SoledadService(service.Service, HookableService):
 
     subscribed_to_hooks = ('on_bonafide_auth', 'on_passphrase_entry')
@@ -175,25 +181,39 @@ class SoledadService(service.Service, HookableService):
 
     def hook_on_passphrase_entry(self, **kw):
         userid = kw.get('username')
-        password = kw.get('password')
-        uuid = kw.get('uuid')
-        container = self._container
-        print "on_passphrase_entry: New Soledad Instance: %s" % userid
-        if not container.get_instance(userid):
-            container.add_instance(userid, password, uuid=uuid, token=None)
+        provider = _get_provider_from_full_userid(userid)
+        provider.callWhenReady(self._hook_on_passphrase_entry, provider, **kw)
+
+    def _hook_on_passphrase_entry(self, provider, **kw):
+        if provider.offers_service('mx'):
+            userid = kw.get('username')
+            password = kw.get('password')
+            uuid = kw.get('uuid')
+            container = self._container
+            print "on_passphrase_entry: New Soledad Instance: %s" % userid
+            if not container.get_instance(userid):
+                container.add_instance(userid, password, uuid=uuid, token=None)
 
     def hook_on_bonafide_auth(self, **kw):
         userid = kw['username']
-        password = kw['password']
-        token = kw['token']
-        uuid = kw['uuid']
-        container = self._container
-        if container.get_instance(userid):
-            print "Passing a new SRP Token to Soledad: %s" % userid
-            container.set_remote_auth_token(userid, token)
-            container.set_syncable(userid, True)
-        else:
-            container.add_instance(userid, password, uuid=uuid, token=token)
+        provider = _get_provider_from_full_userid(userid)
+        provider.callWhenReady(self._hook_on_bonafide_auth, provider, **kw)
+
+    def _hook_on_bonafide_auth(self, provider, **kw):
+        if provider.offers_service('mx'):
+            userid = kw['username']
+            password = kw['password']
+            token = kw['token']
+            uuid = kw['uuid']
+
+            container = self._container
+            if container.get_instance(userid):
+                print "Passing a new SRP Token to Soledad: %s" % userid
+                container.set_remote_auth_token(userid, token)
+                container.set_syncable(userid, True)
+            else:
+                container.add_instance(
+                    userid, password, uuid=uuid, token=token)
 
 
 class KeymanagerContainer(Container):
