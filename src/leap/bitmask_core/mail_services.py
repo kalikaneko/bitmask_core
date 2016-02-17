@@ -163,6 +163,19 @@ def _get_provider_from_full_userid(userid):
     return config.Provider(provider_id)
 
 
+def is_service_ready(service, provider):
+    """
+    Returns True when the following conditions are met:
+       - Provider offers that service.
+       - We have the config files for the service.
+       - The service is enabled.
+    """
+    has_service = provider.offers_service(service)
+    has_config = provider.has_config_for_service(service)
+    is_enabled = provider.is_service_enabled(service)
+    return has_service and has_config and is_enabled
+
+
 class SoledadService(service.Service, HookableService):
 
     subscribed_to_hooks = ('on_bonafide_auth', 'on_passphrase_entry')
@@ -185,7 +198,11 @@ class SoledadService(service.Service, HookableService):
         provider.callWhenReady(self._hook_on_passphrase_entry, provider, **kw)
 
     def _hook_on_passphrase_entry(self, provider, **kw):
-        if provider.offers_service('mx'):
+        print
+        print "PROVIDER IS READY:"
+        print "HOOKING ON PASSPHRASE ENTRY.........................."
+        print
+        if is_service_ready('mx', provider):
             userid = kw.get('username')
             password = kw.get('password')
             uuid = kw.get('uuid')
@@ -193,6 +210,9 @@ class SoledadService(service.Service, HookableService):
             print "on_passphrase_entry: New Soledad Instance: %s" % userid
             if not container.get_instance(userid):
                 container.add_instance(userid, password, uuid=uuid, token=None)
+
+        else:
+            print "SERVICE MX is not ready..."  
 
     def hook_on_bonafide_auth(self, **kw):
         userid = kw['username']
