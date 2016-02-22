@@ -96,7 +96,7 @@ class BitmaskBackend(configurable.ConfigurableService):
         eip_service.setServiceParent(self)
 
     def init_zmq(self):
-        zs = _zmq.ZMQDispatcher(self)
+        zs = _zmq.ZMQServerService(self)
         zs.setServiceParent(self)
 
     def init_web(self):
@@ -117,8 +117,11 @@ class BitmaskBackend(configurable.ConfigurableService):
         status_messages = []
         for name in services:
             status = "stopped"
-            if self.getServiceNamed(name).running:
-                status = "running"
+            try:
+                if self.getServiceNamed(name).running:
+                    status = "running"
+            except KeyError:
+                pass
             status_messages.append("[{}: {}]".format(name, status))
 
         return " ".join(status_messages)

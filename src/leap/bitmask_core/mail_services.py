@@ -185,7 +185,7 @@ class SoledadService(service.Service, HookableService):
         self._basedir = basedir
 
     def startService(self):
-        print "Starting Soledad Service"
+        log.msg('Starting Soledad Service')
         self._container = SoledadContainer()
         self._container.service = self
         super(SoledadService, self).startService()
@@ -198,21 +198,20 @@ class SoledadService(service.Service, HookableService):
         provider.callWhenReady(self._hook_on_passphrase_entry, provider, **kw)
 
     def _hook_on_passphrase_entry(self, provider, **kw):
-        print
-        print "PROVIDER IS READY:"
-        print "HOOKING ON PASSPHRASE ENTRY.........................."
-        print
+        #print
+        #print "PROVIDER IS READY:", provider._domain
+        #print
         if is_service_ready('mx', provider):
             userid = kw.get('username')
             password = kw.get('password')
             uuid = kw.get('uuid')
             container = self._container
-            print "on_passphrase_entry: New Soledad Instance: %s" % userid
+            #print "on_passphrase_entry: New Soledad Instance: %s" % userid
             if not container.get_instance(userid):
                 container.add_instance(userid, password, uuid=uuid, token=None)
 
         else:
-            print "SERVICE MX is not ready..."  
+            log.msg('Service MX is not ready...')
 
     def hook_on_bonafide_auth(self, **kw):
         userid = kw['username']
@@ -228,7 +227,7 @@ class SoledadService(service.Service, HookableService):
 
             container = self._container
             if container.get_instance(userid):
-                print "Passing a new SRP Token to Soledad: %s" % userid
+                #print "Passing a new SRP Token to Soledad: %s" % userid
                 container.set_remote_auth_token(userid, token)
                 container.set_syncable(userid, True)
             else:
@@ -247,7 +246,7 @@ class KeymanagerContainer(Container):
         keymanager = self._create_keymanager_instance(
             userid, token, uuid, soledad)
         # TODO add hook for KEY GENERATION AND SENDING...
-        print "Adding Keymanager instance for:", userid
+        #print "Adding Keymanager instance for:", userid
         self._instances[userid] = keymanager
 
         # TODO use onready-deferreds instead
@@ -294,7 +293,7 @@ class KeymanagerService(service.Service, HookableService):
         self._basedir = basedir
 
     def startService(self):
-        print "Starting Keymanager Service"
+        log.msg('Starting Keymanager Service')
         self._container = KeymanagerContainer(self._basedir)
         self._container.service = self
         super(KeymanagerService, self).startService()
@@ -348,7 +347,7 @@ class StandardMailService(service.MultiService, HookableService):
             self._sendmail_opts))
 
     def startService(self):
-        print "Starting Mail Service..."
+        log.msg('Starting Mail Service...')
         super(StandardMailService, self).startService()
 
     def stopService(self):
@@ -395,7 +394,7 @@ class StandardMailService(service.MultiService, HookableService):
         keymanager = kw['keymanager']
 
         # TODO --- only start instance if "autostart" is True.
-        print "ADDING NEW KEYMANAGER INSTANCE FOR", userid
+        #print "ADDING NEW KEYMANAGER INSTANCE FOR", userid
         self.startInstance(userid, soledad, keymanager)
 
     # commands
@@ -443,7 +442,7 @@ class IMAPService(service.Service):
         super(IMAPService, self).__init__()
 
     def startService(self):
-        print "Starting IMAP Service"
+        #print "Starting IMAP Service"
         super(IMAPService, self).startService()
 
     def stopService(self):
@@ -470,7 +469,7 @@ class SMTPService(service.Service):
         super(SMTPService, self).__init__()
 
     def startService(self):
-        print "Starting SMTP Service"
+        #print "Starting SMTP Service"
         super(SMTPService, self).startService()
 
     def stopService(self):
@@ -488,7 +487,7 @@ class IncomingMailService(service.Service):
         self._instances = {}
 
     def startService(self):
-        print "Starting IncomingMail Service"
+        #print "Starting IncomingMail Service"
         super(IncomingMailService, self).startService()
 
     def stopService(self):
@@ -507,7 +506,7 @@ class IncomingMailService(service.Service):
         soledad = self._mail.get_soledad_session(userid)
         keymanager = self._mail.get_keymanager_session(userid)
 
-        print "Starting instance for %s" % userid
+        #print "Starting instance for %s" % userid
         self._start_incoming_mail_instance(
             keymanager, soledad, userid)
 

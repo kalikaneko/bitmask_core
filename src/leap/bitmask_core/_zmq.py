@@ -22,19 +22,20 @@ from twisted.application import service
 from twisted.internet import defer, reactor
 from twisted.python import log
 
-from txzmq import ZmqEndpoint, ZmqFactory, ZmqREPConnection
+from txzmq import ZmqEndpoint, ZmqEndpointType
+from txzmq import ZmqFactory, ZmqREPConnection
 
 from leap.bonafide import config
 
 
-class ZMQDispatcher(service.Service):
+class ZMQServerService(service.Service):
 
     def __init__(self, core):
         self._core = core
 
     def startService(self):
         zf = ZmqFactory()
-        e = ZmqEndpoint("bind", config.ENDPOINT)
+        e = ZmqEndpoint(ZmqEndpointType.bind, config.ENDPOINT)
 
         self._conn = _DispatcherREPConnection(zf, e, self._core)
         reactor.callWhenRunning(self._conn.do_greet)
@@ -59,7 +60,6 @@ class _DispatcherREPConnection(ZmqREPConnection):
         m = self._get_service('mail')
         bf = self._get_service('bonafide')
 
-
         if cmd == 'stats':
             r = self.core.do_stats()
             self.defer_reply(r, msgId)
@@ -73,7 +73,7 @@ class _DispatcherREPConnection(ZmqREPConnection):
             self.defer_reply(r, msgId)
 
         elif cmd == 'shutdown':
-            r = 'ok, shutting down...'
+            r = 'Shutting down bitmaskd daemon...'
             self.defer_reply(r, msgId)
             self.do_shutdown()
 
@@ -123,7 +123,6 @@ class _DispatcherREPConnection(ZmqREPConnection):
                 def save_cert(cert_data):
                     userid, cert_str = cert_data
                     cert_path = yield m.do_get_smtp_cert_path(userid)
-                    print 'saving to cert_path', cert_path
                     with open(cert_path, 'w') as outf:
                         outf.write(cert_str)
                     defer.returnValue('certificate saved to %s' % cert_path)
@@ -148,7 +147,10 @@ class _DispatcherREPConnection(ZmqREPConnection):
                 self.defer_reply(r, msgId)
 
     def _get_service(self, name):
-        return self.core.getServiceNamed(name)
+        try:
+            return self.core.getServiceNamed(name)
+        except KeyError:
+            return None
 
     def defer_reply(self, response, msgId):
         reactor.callLater(0, self.reply, msgId, str(response))
@@ -158,7 +160,7 @@ class _DispatcherREPConnection(ZmqREPConnection):
         self.defer_reply("ERROR: %r" % failure, msgId)
 
     def do_greet(self):
-        print "Starting ZMQ Dispatcher"
+        log.msg('starting ZMQ dispatcher')
 
     def do_shutdown(self):
         print "Service Stopped. Have a nice day."
