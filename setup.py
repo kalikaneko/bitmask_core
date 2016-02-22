@@ -61,6 +61,7 @@ except Exception:
     long_description = ""
 
 bitmask_cli = 'bitmask_cli=leap.bitmask_core.bitmask_cli:main'
+bitmaskd = 'bitmaskd=leap.bitmask_core.launcher:run_bitmaskd'
 
 setup(
     name='leap.bitmask_core',
@@ -85,6 +86,6 @@ setup(
     include_package_data=True,
     zip_safe=False,
     entry_points={
-        'console_scripts': [bitmask_cli]
+        'console_scripts': [bitmask_cli, bitmaskd]
     },
 )
