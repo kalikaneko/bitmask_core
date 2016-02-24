@@ -213,26 +213,35 @@ def send_command(cli):
 
     elif cmd == 'mail':
         if subargs.status:
-            data = ("mail", "status")
+            data = ('mail', 'status')
 
-        if subargs.get_imap_token:
-            data = ("mail", "get_imap_token")
+        elif subargs.get_imap_token:
+            data = ('mail', 'get_imap_token')
 
-        if subargs.get_smtp_token:
-            data = ("mail", "get_smtp_token")
+        elif subargs.get_smtp_token:
+            data = ('mail', 'get_smtp_token')
 
-        if subargs.get_smtp_certificate:
-            data = ("mail", "get_smtp_certificate")
+        elif subargs.get_smtp_certificate:
+            data = ('mail', 'get_smtp_certificate')
+
+        else:
+            error('Use bitmask_cli mail --help to see available subcommands')
+            return
 
     elif cmd == 'eip':
         if subargs.status:
-            data = ("eip", "status")
+            data = ('eip', 'status')
 
-        if subargs.start:
-            data = ("eip", "start")
+        elif subargs.start:
+            data = ('eip', 'start')
 
-        if subargs.stop:
-            data = ("eip", "stop")
+        elif subargs.stop:
+            data = ('eip', 'stop')
+
+        else:
+            error('Use bitmask_cli eip --help to see available subcommands',
+                  stop=True)
+            return
 
     s = get_zmq_connection()
     try:
