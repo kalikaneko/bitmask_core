@@ -43,22 +43,24 @@ class BitmaskBackend(configurable.ConfigurableService):
         def enabled(service):
             return self.get_config('services', service, False, boolean=True)
 
-        self.init_events()
-        self.init_bonafide()
+        on_start = reactor.callWhenRunning
+
+        on_start(self.init_events)
+        on_start(self.init_bonafide)
 
         if enabled('mail'):
-            self.init_soledad()
-            self.init_keymanager()
-            self.init_mail()
+            on_start(self.init_soledad)
+            on_start(self.init_keymanager)
+            on_start(self.init_mail)
 
         if enabled('eip'):
-            self.init_eip()
+            on_start(self.init_eip)
 
         if enabled('zmq'):
-            self.init_zmq()
+            on_start(self.init_zmq)
 
         if enabled('web'):
-            self.init_web()
+            on_start(self.init_web)
 
     def init_events(self):
         event_server.ensure_server()
