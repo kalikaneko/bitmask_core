@@ -19,13 +19,14 @@ ZMQ REQ-REP Dispatcher.
 """
 
 from twisted.application import service
-from twisted.internet import defer, reactor
+from twisted.internet import reactor
 from twisted.python import log
 
 from txzmq import ZmqEndpoint, ZmqEndpointType
 from txzmq import ZmqFactory, ZmqREPConnection
 
 from leap.bonafide import config
+from leap.bitmask_core.dispatcher import CommandDispatcher
 
 
 class ZMQServerService(service.Service):
@@ -34,6 +35,7 @@ class ZMQServerService(service.Service):
         self._core = core
 
     def startService(self):
+        # TODO --- change to CORE.ENDPOINT
         zf = ZmqFactory()
         e = ZmqEndpoint(ZmqEndpointType.bind, config.ENDPOINT)
 
@@ -47,110 +49,14 @@ class ZMQServerService(service.Service):
 
 class _DispatcherREPConnection(ZmqREPConnection):
 
-    # XXX this should inherit from a common dispatcher,
-    # or receive a generic dispatcher instance
-
     def __init__(self, zf, e, core):
         ZmqREPConnection.__init__(self, zf, e)
-        self.core = core
+        self.dispatcher = CommandDispatcher(core)
 
     def gotMessage(self, msgId, *parts):
 
-        cmd = parts[0]
-        m = self._get_service('mail')
-        bf = self._get_service('bonafide')
-
-        if cmd == 'stats':
-            r = self.core.do_stats()
-            self.defer_reply(r, msgId)
-
-        elif cmd == 'status':
-            r = self.core.do_status()
-            self.defer_reply(r, msgId)
-
-        elif cmd == 'version':
-            r = self.core.do_version()
-            self.defer_reply(r, msgId)
-
-        elif cmd == 'shutdown':
-            r = 'Shutting down bitmaskd daemon...'
-            self.defer_reply(r, msgId)
-            self.do_shutdown()
-
-        elif cmd == 'user':
-            subcmd = parts[1]
-            user, password = parts[2], parts[3]
-
-            bf = self._get_service('bonafide')
-
-            if subcmd == 'authenticate':
-                d = bf.do_authenticate(user, password)
-            if subcmd == 'signup':
-                d = bf.do_signup(user, password)
-            if subcmd == 'logout':
-                d = bf.do_logout(user, password)
-            d.addCallback(lambda r: self.defer_reply(r, msgId))
-            d.addErrback(lambda f: self.log_err(f, msgId))
-
-        elif cmd == 'mail':
-            subcmd = parts[1]
-
-            if subcmd == 'status':
-                r = m.do_status()
-                self.defer_reply(r, msgId)
-
-            elif subcmd == 'get_imap_token':
-                d = m.get_imap_token()
-                d.addCallback(lambda r: self.defer_reply(r, msgId))
-                d.addErrback(lambda f: self.log_err(f, msgId))
-
-            elif subcmd == 'get_smtp_token':
-                d = m.get_smtp_token()
-                d.addCallback(lambda r: self.defer_reply(r, msgId))
-                d.addErrback(lambda f: self.log_err(f, msgId))
-
-            elif subcmd == 'get_smtp_certificate':
-                # TODO should ask for confirmation? like --force or something,
-                # if we already have a valid one. or better just refuse if cert
-                # exists.
-                # TODO how should we pass the userid??
-                # - Keep an 'active' user in bonafide (last authenticated)
-                # (doing it now)
-                # - Get active user from Mail Service (maybe preferred?)
-                # - Have a command/method to set 'active' user.
-
-                @defer.inlineCallbacks
-                def save_cert(cert_data):
-                    userid, cert_str = cert_data
-                    cert_path = yield m.do_get_smtp_cert_path(userid)
-                    with open(cert_path, 'w') as outf:
-                        outf.write(cert_str)
-                    defer.returnValue('certificate saved to %s' % cert_path)
-
-                d = bf.do_get_smtp_cert()
-                d.addCallback(save_cert)
-                d.addCallback(lambda r: self.defer_reply(r, msgId))
-                d.addErrback(lambda f: self.log_err(f, msgId))
-
-        elif cmd == 'eip':
-            subcmd = parts[1]
-
-            eip = self._get_service('eip')
-
-            if subcmd == 'start':
-                provider = parts[2]
-                r = eip.do_start(provider)
-                self.defer_reply(r, msgId)
-
-            if subcmd == 'stop':
-                r = eip.do_stop()
-                self.defer_reply(r, msgId)
-
-    def _get_service(self, name):
-        try:
-            return self.core.getServiceNamed(name)
-        except KeyError:
-            return None
+        r = self.dispatcher.dispatch(parts)
+        r.addCallback(self.defer_reply, msgId)
 
     def defer_reply(self, response, msgId):
         reactor.callLater(0, self.reply, msgId, str(response))
@@ -161,7 +67,3 @@ class _DispatcherREPConnection(ZmqREPConnection):
 
     def do_greet(self):
         log.msg('starting ZMQ dispatcher')
-
-    def do_shutdown(self):
-        print "Service Stopped. Have a nice day."
-        self.core.do_shutdown()

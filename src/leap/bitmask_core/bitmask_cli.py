@@ -225,6 +225,9 @@ def send_command(cli):
             data = ("mail", "get_smtp_certificate")
 
     elif cmd == 'eip':
+        if subargs.status:
+            data = ("eip", "status")
+
         if subargs.start:
             data = ("eip", "start")
 
