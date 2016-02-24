@@ -31,7 +31,7 @@ from txzmq import ZmqFactory, ZmqREQConnection
 from txzmq import ZmqRequestTimeoutError
 import zmq
 
-from leap.bonafide import config
+from leap.bitmask_core import ENDPOINT
 
 
 class BitmaskCLI(object):
@@ -148,7 +148,7 @@ GENERAL COMMANDS:
 
 def get_zmq_connection():
     zf = ZmqFactory()
-    e = ZmqEndpoint(ZmqEndpointType.connect, config.ENDPOINT)
+    e = ZmqEndpoint(ZmqEndpointType.connect, ENDPOINT)
     return ZmqREQConnection(zf, e)
 
 

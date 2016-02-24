@@ -25,7 +25,7 @@ from twisted.python import log
 from txzmq import ZmqEndpoint, ZmqEndpointType
 from txzmq import ZmqFactory, ZmqREPConnection
 
-from leap.bonafide import config
+from leap.bitmask_core import ENDPOINT
 from leap.bitmask_core.dispatcher import CommandDispatcher
 
 
@@ -35,9 +35,8 @@ class ZMQServerService(service.Service):
         self._core = core
 
     def startService(self):
-        # TODO --- change to CORE.ENDPOINT
         zf = ZmqFactory()
-        e = ZmqEndpoint(ZmqEndpointType.bind, config.ENDPOINT)
+        e = ZmqEndpoint(ZmqEndpointType.bind, ENDPOINT)
 
         self._conn = _DispatcherREPConnection(zf, e, self._core)
         reactor.callWhenRunning(self._conn.do_greet)
