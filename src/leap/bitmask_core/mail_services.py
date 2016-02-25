@@ -198,9 +198,6 @@ class SoledadService(service.Service, HookableService):
         provider.callWhenReady(self._hook_on_passphrase_entry, provider, **kw)
 
     def _hook_on_passphrase_entry(self, provider, **kw):
-        #print
-        #print "PROVIDER IS READY:", provider._domain
-        #print
         if is_service_ready('mx', provider):
             userid = kw.get('username')
             password = kw.get('password')
@@ -274,7 +271,7 @@ class KeymanagerContainer(Container):
         return keymanager
 
     def _get_api_uri(self, provider):
-        # TODO get this from service.json
+        # TODO get this from service.json (use bonafide service)
         api_uri = "https://api.{provider}:4430".format(
             provider=provider)
         return api_uri
@@ -323,6 +320,8 @@ class StandardMailService(service.MultiService, HookableService):
           watches and processes the Incoming Queue and saves the processed mail
           into the matching INBOX.
     """
+
+    name = 'mail'
 
     # TODO factor out Mail Service to inside mail package.
 

@@ -79,14 +79,16 @@ GENERAL COMMANDS:
             description=('Handles Bitmask accounts: creation, authentication '
                          'and modification'),
             prog='bitmask_cli user')
+        parser.add_argument('username', nargs='?',
+                            help='username ID, in the form <user@example.org>')
         parser.add_argument('--create', action='store_true',
                             help='register a new user, if possible')
         parser.add_argument('--authenticate', action='store_true',
                             help='logs in against the provider')
         parser.add_argument('--logout', action='store_true',
                             help='ends any active session with the provider')
-        parser.add_argument('username',
-                            help='username ID, in the form <user@example.org>')
+        parser.add_argument('--active', action='store_true',
+                            help='shows the active user, if any')
         # now that we're inside a subcommand, ignore the first
         # TWO argvs, ie the command (bitmask_cli) and the subcommand (user)
         args = parser.parse_args(sys.argv[2:])
@@ -181,62 +183,78 @@ def send_command(cli):
 
     if cmd == 'version':
         do_print(['bitmask_cli: 0.0.1'])
-        data = ("version",)
+        data = ('version',)
 
     elif cmd == 'status':
-        data = ("status",)
+        data = ('status',)
 
     elif cmd == 'shutdown':
-        data = ("shutdown",)
+        data = ('shutdown',)
 
     elif cmd == 'debug':
-        data = ("stats",)
+        data = ('stats',)
 
     elif cmd == 'user':
         username = subargs.username
-        if '@' not in username:
+        if username and '@' not in username:
             error("Username ID must be in the form <user@example.org>",
                   stop=True)
             return
+        if not username:
+            username = ''
 
         # TODO check that ONLY ONE FLAG is True
         # TODO check that AT LEAST ONE FLAG is True
 
         passwd = getpass.getpass()
+        data = ['user']
 
-        if subargs.create:
-            data = ("user", "signup", username, passwd)
-        if subargs.authenticate:
-            data = ("user", "authenticate", username, passwd)
-        if subargs.logout:
-            data = ("user", "logout", username, passwd)
+        if subargs.active:
+            data += ['active', '', '']
+
+        elif subargs.create:
+            data += ['signup', username, passwd]
+
+        elif subargs.authenticate:
+            data += ['authenticate', username, passwd]
+
+        elif subargs.logout:
+            data += ['logout', username, passwd]
+
+        else:
+            error('Use bitmask_cli user --help to see available subcommands')
+            return
 
     elif cmd == 'mail':
+        data = ['mail']
+
         if subargs.status:
-            data = ('mail', 'status')
+            data += ['status']
 
         elif subargs.get_imap_token:
-            data = ('mail', 'get_imap_token')
+            data += ['get_imap_token']
 
         elif subargs.get_smtp_token:
-            data = ('mail', 'get_smtp_token')
+            data += ['get_smtp_token']
 
         elif subargs.get_smtp_certificate:
-            data = ('mail', 'get_smtp_certificate')
+            data += ['get_smtp_certificate']
 
         else:
             error('Use bitmask_cli mail --help to see available subcommands')
             return
 
     elif cmd == 'eip':
+        data = ['eip']
+
         if subargs.status:
-            data = ('eip', 'status')
+            data += ['status']
 
         elif subargs.start:
-            data = ('eip', 'start')
+            data += ['start']
 
         elif subargs.stop:
-            data = ('eip', 'stop')
+            data += ['stop']
 
         else:
             error('Use bitmask_cli eip --help to see available subcommands',
@@ -245,9 +263,9 @@ def send_command(cli):
 
     s = get_zmq_connection()
     try:
-        # timeout on 2sec since the server is local and it should respond far
+        # timeout on 1sec since the server is local and it should respond far
         # quickly than that.
-        d = s.sendMsg(*data, timeout=2)
+        d = s.sendMsg(*data, timeout=1)
     except zmq.error.Again:
         # NOTE: I'm not sure on which case we get to this point
         # If the server is down we catch it on `timeout_handler`

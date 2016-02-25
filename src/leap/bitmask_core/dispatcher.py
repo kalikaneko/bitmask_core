@@ -71,11 +71,15 @@ class CommandDispatcher(object):
             print 'authenticating...'
             d = bf.do_authenticate(user, password)
 
-        if subcmd == 'signup':
+        elif subcmd == 'signup':
             d = bf.do_signup(user, password)
 
-        if subcmd == 'logout':
+        elif subcmd == 'logout':
             d = bf.do_logout(user, password)
+
+        elif subcmd == 'active':
+            d = bf.do_get_active_user()
+
         return d
 
     def do_EIP(self, *parts):
