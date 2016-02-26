@@ -38,13 +38,13 @@ class MissingConfigEntry(Exception):
 class ConfigurableService(service.MultiService):
 
     config_file = u"bitmaskd.cfg"
+    service_names = ('mail', 'eip', 'zmq', 'web')
 
     def __init__(self, basedir='~/.config/leap'):
         service.MultiService.__init__(self)
 
         path = os.path.abspath(os.path.expanduser(basedir))
         if not os.path.isdir(path):
-            print "CREATING...", path
             files.mkdir_p(path)
         self.basedir = path
 
@@ -71,11 +71,13 @@ class ConfigurableService(service.MultiService):
         if not self.config.has_section(section):
             self.config.add_section(section)
         self.config.set(section, option, value)
+        self.save_config()
+        self.read_config()
         assert self.config.get(section, option) == value
 
     def read_config(self):
         self.config = ConfigParser.SafeConfigParser()
-        bitmaskd_cfg = os.path.join(self.basedir, self.config_file)
+        bitmaskd_cfg = self._get_config_path()
 
         if not os.path.isfile(bitmaskd_cfg):
             self._create_default_config(bitmaskd_cfg)
@@ -87,9 +89,17 @@ class ConfigurableService(service.MultiService):
             if os.path.exists(bitmaskd_cfg):
                 raise
 
+    def save_config(self):
+        bitmaskd_cfg = self._get_config_path()
+        with open(bitmaskd_cfg, 'wb') as f:
+            self.config.write(f)
+
     def _create_default_config(self, path):
         with open(path, 'w') as outf:
             outf.write(DEFAULT_CONFIG)
+
+    def _get_config_path(self):
+        return os.path.join(self.basedir, self.config_file)
 
 
 DEFAULT_CONFIG = """

@@ -84,26 +84,37 @@ class CommandDispatcher(object):
 
     def do_EIP(self, *parts):
         subcmd = parts[1]
+        eip_label = 'eip'
 
-        eip = self._get_service('eip')
+        if subcmd == 'enable':
+            return self.core.do_enable_service(eip_label)
+
+        eip = self._get_service(eip_label)
         if not eip:
             return 'eip: disabled'
 
         if subcmd == 'status':
             return eip.do_status()
 
-        if subcmd == 'start':
+        elif subcmd == 'disable':
+            return self.core.do_disable_service(eip_label)
+
+        elif subcmd == 'start':
             # TODO --- attempt to get active provider
             provider = parts[2]
             return eip.do_start(provider)
 
-        if subcmd == 'stop':
+        elif subcmd == 'stop':
             return eip.do_stop()
 
     def do_MAIL(self, *parts):
         subcmd = parts[1]
+        mail_label = 'mail'
 
-        m = self._get_service('mail')
+        if subcmd == 'enable':
+            return self.core.do_enable_service(mail_label)
+
+        m = self._get_service(mail_label)
         bf = self._get_service('bonafide')
 
         if not m:
@@ -112,6 +123,9 @@ class CommandDispatcher(object):
         if subcmd == 'status':
             return m.do_status()
 
+        elif subcmd == 'disable':
+            return self.core.do_disable_service(mail_label)
+
         elif subcmd == 'get_imap_token':
             return m.get_imap_token()
 
@@ -119,6 +133,7 @@ class CommandDispatcher(object):
             return m.get_smtp_token()
 
         elif subcmd == 'get_smtp_certificate':
+            # TODO move to mail service
             # TODO should ask for confirmation? like --force or something,
             # if we already have a valid one. or better just refuse if cert
             # exists.

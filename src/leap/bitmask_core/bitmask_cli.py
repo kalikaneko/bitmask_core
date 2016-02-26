@@ -29,7 +29,6 @@ from twisted.internet import reactor
 from txzmq import ZmqEndpoint, ZmqEndpointType
 from txzmq import ZmqFactory, ZmqREQConnection
 from txzmq import ZmqRequestTimeoutError
-import zmq
 
 from leap.bitmask_core import ENDPOINT
 
@@ -231,6 +230,12 @@ def send_command(cli):
         if subargs.status:
             data += ['status']
 
+        elif subargs.enable:
+            data += ['enable']
+
+        elif subargs.disable:
+            data += ['disable']
+
         elif subargs.get_imap_token:
             data += ['get_imap_token']
 
@@ -249,6 +254,12 @@ def send_command(cli):
 
         if subargs.status:
             data += ['status']
+
+        elif subargs.enable:
+            data += ['enable']
+
+        elif subargs.disable:
+            data += ['disable']
 
         elif subargs.start:
             data += ['start']

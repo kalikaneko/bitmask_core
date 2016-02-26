@@ -136,10 +136,37 @@ class BitmaskBackend(configurable.ConfigurableService):
         self.stopService()
         reactor.stop()
 
-    def do_eip_start(self):
-        eip = self.getServiceNamed('eip')
-        eip.do_start()
+    def do_enable_service(self, service):
+        assert service in self.service_names
+        self.set_config('services', service, 'True')
 
-    def do_eip_stop(self):
-        eip = self.getServiceNamed('eip')
-        eip.do_stop()
+        if service == 'mail':
+            self.init_soledad()
+            self.init_keymanager()
+            self.init_mail()
+
+        elif service == 'eip':
+            self.init_eip()
+
+        elif service == 'zmq':
+            self.init_zmq()
+
+        elif service == 'web':
+            self.init_web()
+
+        return 'ok'
+
+    def do_disable_service(self, service):
+        assert service in self.service_names
+        # TODO -- should stop also?
+        self.set_config('services', service, 'False')
+        return 'ok'
+
+    # TODO -- moved to EIP Service ??
+    #def do_eip_start(self):
+        #eip = self.getServiceNamed('eip')
+        #eip.do_start()
+#
+    #def do_eip_stop(self):
+        #eip = self.getServiceNamed('eip')
+        #eip.do_stop()
