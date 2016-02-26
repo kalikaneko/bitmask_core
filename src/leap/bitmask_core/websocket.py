@@ -33,84 +33,7 @@ from autobahn.twisted.websocket import WebSocketServerProtocol
 
 from autobahn.twisted.resource import WebSocketResource
 
-
-class DispatcherProtocol(WebSocketServerProtocol):
-
-    def onMessage(self, msg, binary):
-        parts = msg.split()
-        cmd = parts[0]
-
-        if cmd == "shutdown":
-            result = "ok, bye!"
-            self.sendMessage(result, binary)
-            self.core.do_shutdown()
-            return
-
-        if cmd == "status":
-            result = self.core.do_status()
-            self.reply(result, binary)
-
-        if cmd == "stats":
-            result = self.core.do_stats()
-            self.reply(result, binary)
-
-        if cmd == "version":
-            result = self.core.do_version()
-            self.reply(result, binary)
-
-        if cmd == "user":
-            subcmd = parts[1]
-            # user, password = parts[2], parts[3]
-            user = parts[2]
-            password = "lalalala"
-
-            bf = self._get_service('bonafide')
-
-            if subcmd == 'authenticate':
-                d = bf.do_authenticate(user, password)
-
-            if subcmd == 'signup':
-                d = bf.do_signup(user, password)
-
-            if subcmd == 'logout':
-                d = bf.do_logout(user, password)
-
-            d.addBoth(lambda r: self.defer_reply(r, binary))
-
-        if cmd == "mail":
-            subcmd = parts[1]
-
-            m = self._get_service('mail')
-
-            if subcmd == 'status':
-                r = m.do_status()
-                self.defer_reply(r, binary)
-
-            if subcmd == 'get_imap_token':
-                d = m.get_imap_token()
-                d.addBoth(lambda r: self.defer_reply(str(r), binary))
-
-        if cmd == "eip":
-            subcmd = parts[1]
-
-            e = self._get_service('eip')
-
-            if subcmd == 'start':
-                r = e.do_start()
-                self.defer_reply(r, binary)
-
-            if subcmd == 'stop':
-                r = e.do_stop()
-                self.defer_reply(r, binary)
-
-    def reply(self, response, binary):
-        self.sendMessage(response, binary)
-
-    def defer_reply(self, response, binary):
-        reactor.callLater(0, self.reply, response, binary)
-
-    def _get_service(self, name):
-        return self.core.getServiceNamed(name)
+from leap.bitmask_core.dispatcher import CommandDispatcher
 
 
 class WebSocketsDispatcherService(service.Service):
@@ -129,7 +52,7 @@ class WebSocketsDispatcherService(service.Service):
         factory = WebSocketServerFactory(u"ws://127.0.0.1:%d" % self.port,
                                          debug=self.debug)
         factory.protocol = DispatcherProtocol
-        factory.protocol.core = self._core
+        factory.protocol.dispatcher = CommandDispatcher(self._core)
 
         # FIXME: Site.start/stopFactory should start/stop factories wrapped as
         # Resources
@@ -157,3 +80,20 @@ class WebSocketsDispatcherService(service.Service):
         self.factory.stopFactory()
         self.site.stopFactory()
         self.listener.stopListening()
+
+
+class DispatcherProtocol(WebSocketServerProtocol):
+
+    def onMessage(self, msg, binary):
+        parts = msg.split()
+        r = self.dispatcher.dispatch(parts)
+        r.addCallback(self.defer_reply, binary)
+
+    def reply(self, response, binary):
+        self.sendMessage(response, binary)
+
+    def defer_reply(self, response, binary):
+        reactor.callLater(0, self.reply, response, binary)
+
+    def _get_service(self, name):
+        return self.core.getServiceNamed(name)
