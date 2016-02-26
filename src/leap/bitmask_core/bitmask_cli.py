@@ -262,15 +262,8 @@ def send_command(cli):
             return
 
     s = get_zmq_connection()
-    try:
-        # timeout on 1sec since the server is local and it should respond far
-        # quickly than that.
-        d = s.sendMsg(*data, timeout=1)
-    except zmq.error.Again:
-        # NOTE: I'm not sure on which case we get to this point
-        # If the server is down we catch it on `timeout_handler`
-        print Fore.RED + "[ERROR] Server is down" + Fore.RESET
 
+    d = s.sendMsg(*data, timeout=1)
     d.addCallback(cb)
     d.addCallback(lambda x: reactor.stop())
     d.addErrback(timeout_handler)
