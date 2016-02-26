@@ -76,26 +76,25 @@ class BitmaskBackend(configurable.ConfigurableService):
         bf.register_hook('on_bonafide_auth', trigger='soledad')
 
     def init_soledad(self):
-        sol = mail_services.SoledadService(self.basedir)
-        sol.setName("soledad")
-        sol.setServiceParent(self)
-        sol.register_hook('on_new_soledad_instance', trigger='keymanager')
+        service = mail_services.SoledadService
+        sol = self._maybe_start_service(
+            'soledad', service, self.basedir)
+        if sol:
+            sol.register_hook('on_new_soledad_instance', trigger='keymanager')
 
     def init_keymanager(self):
-        km = mail_services.KeymanagerService(self.basedir)
-        km.setName("keymanager")
-        km.setServiceParent(self)
-        km.register_hook('on_new_keymanager_instance', trigger='mail')
+        service = mail_services.KeymanagerService
+        km = self._maybe_start_service(
+            'keymanager', service, self.basedir)
+        if km:
+            km.register_hook('on_new_keymanager_instance', trigger='mail')
 
     def init_mail(self):
-        ms = mail_services.StandardMailService(self.basedir)
-        ms.setName("mail")
-        ms.setServiceParent(self)
+        service = mail_services.StandardMailService
+        self._maybe_start_service('mail', service, self.basedir)
 
     def init_eip(self):
-        eip_service = EIPService()
-        eip_service.setName("eip")
-        eip_service.setServiceParent(self)
+        self._maybe_start_service('eip', EIPService)
 
     def init_zmq(self):
         zs = _zmq.ZMQServerService(self)
@@ -104,6 +103,15 @@ class BitmaskBackend(configurable.ConfigurableService):
     def init_web(self):
         ws = websocket.WebSocketsDispatcherService(self)
         ws.setServiceParent(self)
+
+    def _maybe_start_service(self, label, klass, *args, **kw):
+        try:
+            self.getServiceNamed(label)
+        except KeyError:
+            service = klass(*args, **kw)
+            service.setName(label)
+            service.setServiceParent(self)
+
 
     # General commands for the BitmaskBackend Core Service
 
@@ -161,12 +169,3 @@ class BitmaskBackend(configurable.ConfigurableService):
         # TODO -- should stop also?
         self.set_config('services', service, 'False')
         return 'ok'
-
-    # TODO -- moved to EIP Service ??
-    #def do_eip_start(self):
-        #eip = self.getServiceNamed('eip')
-        #eip.do_start()
-#
-    #def do_eip_stop(self):
-        #eip = self.getServiceNamed('eip')
-        #eip.do_stop()
