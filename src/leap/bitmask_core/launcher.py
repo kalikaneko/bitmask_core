@@ -27,12 +27,11 @@ from leap import bitmask_core
 
 def run_bitmaskd():
     argv[1:] = [
-        #'-n',   #  this seems to be needed O_o
+        # '-n',   #  this seems to be needed O_o
         '-y', join(dirname(bitmask_core.__file__), "bitmaskd.tac"),
         '--pidfile', '/tmp/bitmaskd.pid',
         '--logfile', '/tmp/bitmaskd.log',
         '--umask=0022',
-        #'--spew'  # super crazy debug
     ]
     print '[+] launching bitmaskd...'
     run()

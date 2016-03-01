@@ -17,8 +17,10 @@
 """
 Command dispatcher.
 """
+import json
+
 from twisted.internet import defer
-from twisted.python import failure
+from twisted.python import failure, log
 
 
 # TODO implement sub-classes to dispatch subcommands (user, mail).
@@ -48,17 +50,16 @@ class CommandDispatcher(object):
         return defer.maybeDeferred(_method, *msg)
 
     def do_STATS(self, *parts):
-        return self.core.do_stats()
+        return _format_result(self.core.do_stats())
 
     def do_VERSION(self, *parts):
-        return self.core.do_version()
+        return _format_result(self.core.do_version())
 
     def do_STATUS(self, *parts):
-        return self.core.do_status()
+        return _format_result(self.core.do_status())
 
     def do_SHUTDOWN(self, *parts):
-        print "Service Stopped. Have a nice day."
-        self.core.do_shutdown()
+        return _format_result(self.core.do_shutdown())
 
     def do_USER(self, *parts):
 
@@ -68,7 +69,6 @@ class CommandDispatcher(object):
         bf = self._get_service('bonafide')
 
         if subcmd == 'authenticate':
-            print 'authenticating...'
             d = bf.do_authenticate(user, password)
 
         elif subcmd == 'signup':
@@ -80,6 +80,7 @@ class CommandDispatcher(object):
         elif subcmd == 'active':
             d = bf.do_get_active_user()
 
+        d.addCallbacks(_format_result, _format_error)
         return d
 
     def do_EIP(self, *parts):
@@ -87,50 +88,63 @@ class CommandDispatcher(object):
         eip_label = 'eip'
 
         if subcmd == 'enable':
-            return self.core.do_enable_service(eip_label)
+            return _format_result(
+                self.core.do_enable_service(eip_label))
 
         eip = self._get_service(eip_label)
         if not eip:
-            return 'eip: disabled'
+            return _format_result('eip: disabled')
 
         if subcmd == 'status':
-            return eip.do_status()
+            return _format_result(eip.do_status())
 
         elif subcmd == 'disable':
-            return self.core.do_disable_service(eip_label)
+            return _format_result(
+                self.core.do_disable_service(eip_label))
 
         elif subcmd == 'start':
             # TODO --- attempt to get active provider
+            # TODO or catch the exception and send error
             provider = parts[2]
-            return eip.do_start(provider)
+            d = eip.do_start(provider)
+            d.addCallbacks(_format_result, _format_error)
+            return d
 
         elif subcmd == 'stop':
-            return eip.do_stop()
+            d = eip.do_stop()
+            d.addCallbacks(_format_result, _format_error)
+            return d
+
 
     def do_MAIL(self, *parts):
         subcmd = parts[1]
         mail_label = 'mail'
 
         if subcmd == 'enable':
-            return self.core.do_enable_service(mail_label)
+            return _format_result(
+                self.core.do_enable_service(mail_label))
 
         m = self._get_service(mail_label)
         bf = self._get_service('bonafide')
 
         if not m:
-            return 'mail: disabled'
+            return _format_result('mail: disabled')
 
         if subcmd == 'status':
-            return m.do_status()
+            return _format_result(m.do_status())
 
         elif subcmd == 'disable':
-            return self.core.do_disable_service(mail_label)
+            return _format_result(self.core.do_disable_service(mail_label))
 
         elif subcmd == 'get_imap_token':
-            return m.get_imap_token()
+            d = m.get_imap_token()
+            d.addCallbacks(_format_result, _format_error)
+            return d
 
         elif subcmd == 'get_smtp_token':
-            return m.get_smtp_token()
+            d = m.get_smtp_token()
+            d.addCallbacks(_format_result, _format_error)
+            return d
 
         elif subcmd == 'get_smtp_certificate':
             # TODO move to mail service
@@ -153,4 +167,14 @@ class CommandDispatcher(object):
 
             d = bf.do_get_smtp_cert()
             d.addCallback(save_cert)
+            d.addCallbacks(_format_result, _format_error)
             return d
+
+
+def _format_result(result):
+    return json.dumps({'error': None, 'result': result})
+
+
+def _format_error(failure):
+    log.err(failure)
+    return json.dumps({'error': failure.value.message, 'result': None})

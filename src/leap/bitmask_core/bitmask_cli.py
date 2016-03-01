@@ -18,10 +18,10 @@
 """
 Bitmask Command Line interface: zmq client.
 """
+import json
 import sys
 import getpass
 import argparse
-
 
 from colorama import init as color_init
 from colorama import Fore
@@ -46,10 +46,12 @@ SERVICE COMMANDS:
    user       Handles Bitmask accounts
    mail       Bitmask Encrypted Mail
    eip        Encrypted Internet Proxy
+   keys       Bitmask Keymanager
 
 GENERAL COMMANDS:
 
    version    prints version number and exit
+   launch     launch the Bitmask backend daemon
    shutdown   shutdown Bitmask backend daemon
    status     displays general status about the running Bitmask services
    debug      show some debug info about bitmask-core
@@ -132,7 +134,23 @@ GENERAL COMMANDS:
         args = parser.parse_args(sys.argv[2:])
         self.subargs = args
 
+    def keys(self):
+        parser = argparse.ArgumentParser(
+            description='Bitmask Keymanager management service',
+            prog='bitmask_cli keys')
+        parser.add_argument('--status', action='store_true',
+                            help='Display status about service')
+        parser.add_argument('--list-keys', action='store_true',
+                            help='List all known keys')
+        parser.add_argument('--export-key', action='store_true',
+                            help='Export the given key')
+        args = parser.parse_args(sys.argv[2:])
+        self.subargs = args
+
     # Single commands
+
+    def launch(self):
+        pass
 
     def shutdown(self):
         pass
@@ -162,26 +180,40 @@ def error(msg, stop=False):
 
 
 def timeout_handler(failure, stop_reactor=True):
+    # TODO ---- could try to launch the bitmask daemon here and retry
+
     if failure.trap(ZmqRequestTimeoutError) == ZmqRequestTimeoutError:
         print (Fore.RED + "[ERROR] Timeout contacting the bitmask daemon. "
                "Is it running?" + Fore.RESET)
         reactor.stop()
 
 
-def do_print(stuff):
-    print Fore.GREEN + stuff[0] + Fore.RESET
+def do_print_result(stuff):
+    obj = json.loads(stuff[0])
+    if not obj['error']:
+        print Fore.GREEN + '%s' % obj['result'] + Fore.RESET
+    else:
+        print Fore.RED + 'ERROR:' + '%s' % obj['error'] + Fore.RESET
 
 
 def send_command(cli):
 
     args = cli.args
     subargs = cli.subargs
-    cb = do_print
+    cb = do_print_result
 
     cmd = args.command
 
-    if cmd == 'version':
-        do_print(['bitmask_cli: 0.0.1'])
+    if cmd == 'launch':
+        import commands
+        commands.getoutput('bitmaskd')
+        reactor.stop()
+        return
+
+    elif cmd == 'version':
+        do_print_result([json.dumps(
+            {'result': 'bitmask_cli: 0.0.1',
+             'error': None})])
         data = ('version',)
 
     elif cmd == 'status':
@@ -272,9 +304,20 @@ def send_command(cli):
                   stop=True)
             return
 
+    elif cmd == 'keys':
+        data = ['keys']
+
+        if subargs.status:
+            data += ['status']
+
+        else:
+            error('Use bitmask_cli keys --help to see available subcommands',
+                  stop=True)
+            return
+
     s = get_zmq_connection()
 
-    d = s.sendMsg(*data, timeout=1)
+    d = s.sendMsg(*data, timeout=20)
     d.addCallback(cb)
     d.addCallback(lambda x: reactor.stop())
     d.addErrback(timeout_handler)

@@ -112,13 +112,12 @@ class BitmaskBackend(configurable.ConfigurableService):
             service.setName(label)
             service.setServiceParent(self)
 
-
     # General commands for the BitmaskBackend Core Service
 
     def do_stats(self):
         log.msg('BitmaskCore Service STATS')
         mem = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-        return '[+] BitmaskCore: [Mem usage: %s KB]' % (mem / 1024)
+        return 'BitmaskCore: [Mem usage: %s KB]' % (mem / 1024)
 
     def do_status(self):
         # we may want to make this tuple a class member
@@ -126,7 +125,7 @@ class BitmaskBackend(configurable.ConfigurableService):
 
         status_messages = []
         for name in services:
-            status = "stopped"
+            status = 'stopped'
             try:
                 if self.getServiceNamed(name).running:
                     status = "running"
@@ -138,11 +137,12 @@ class BitmaskBackend(configurable.ConfigurableService):
 
     def do_version(self):
         version = get_versions()['version']
-        return "BitmaskCore: %s" % version
+        return 'BitmaskCore: %s' % version
 
     def do_shutdown(self):
         self.stopService()
-        reactor.stop()
+        reactor.callLater(1, reactor.stop)
+        return 'shutting down...'
 
     def do_enable_service(self, service):
         assert service in self.service_names

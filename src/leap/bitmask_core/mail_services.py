@@ -15,7 +15,8 @@ from twisted.internet import defer
 from twisted.python import log
 
 from leap.bonafide import config
-from leap.keymanager import KeyManager
+from leap.keymanager import KeyManager, openpgp
+from leap.keymanager.errors import KeyNotFound
 from leap.soledad.client.api import Soledad
 from leap.mail.constants import INBOX_NAME
 from leap.mail.mail import Account
@@ -242,15 +243,51 @@ class KeymanagerContainer(Container):
 
         keymanager = self._create_keymanager_instance(
             userid, token, uuid, soledad)
-        # TODO add hook for KEY GENERATION AND SENDING...
-        #print "Adding Keymanager instance for:", userid
+
+
+        d = self.maybe_generate_keys(keymanager, userid)
+        d.addCallback(self._on_keymanager_ready_cb)
+        return d
+
+    def _on_keymanager_ready_cb(self, keymanager, userid, soledad):
+        # TODO use onready-deferreds instead
         self._instances[userid] = keymanager
 
-        # TODO use onready-deferreds instead
-
+        log.msg("Adding Keymanager instance for: %s" % userid)
         this_hook = 'on_new_keymanager_instance'
         data = {'userid': userid, 'soledad': soledad, 'keymanager': keymanager}
         notify_hooked_services(this_hook, self.service, **data)
+
+    def _maybe_generate_keys(self, keymanager, userid):
+
+        def if_not_found_generate(failure):
+            failure.trap(KeyNotFound)
+            # TODO -------------- should ONLY generate if INITIAL_SYNC_DONE.
+            # --------------------------------------------------------------
+            log.msg("Key not found. Generating key for %s" % (userid,))
+            d = self._keymanager.gen_key(openpgp.OpenPGPKey)
+            d.addCallbacks(send_key, log_key_error("generating"))
+            d.addCallback(lambda _: keymanager)
+            return d
+
+        def send_key(ignored):
+            d = keymanager.send_key(openpgp.OpenPGPKey)
+            d.addCallbacks(
+                lambda _: log.msg(
+                    "Key generated successfully for %s" % userid),
+                log_key_error("sending"))
+
+        def log_key_error(step):
+            def log_err(failure):
+                log.error("Error while %s key!", (step,))
+                log.error(failure)
+                return failure
+            return log_err
+
+        d = keymanager.get_key(
+            userid, openpgp.OpenPGPKey, private=True, fetch_remote=False)
+        d.addErrback(if_not_found_generate)
+        return d
 
     def _create_keymanager_instance(self, userid, token, uuid, soledad):
         user, provider = userid.split('@')
