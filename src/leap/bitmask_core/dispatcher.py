@@ -170,6 +170,22 @@ class CommandDispatcher(object):
             d.addCallbacks(_format_result, _format_error)
             return d
 
+    def do_KEYS(self, *parts):
+        subcmd = parts[1]
+
+        keymanager_label = 'keymanager'
+        km = self._get_service(keymanager_label)
+        bf = self._get_service('bonafide')
+
+        if not km:
+            return _format_result('keymanager: disabled')
+
+        if subcmd == 'list_keys':
+            d = bf.do_get_active_user()
+            d.addCallback(km.do_list_keys)
+            d.addCallbacks(_format_result, _format_error)
+            return d
+
 
 def _format_result(result):
     return json.dumps({'error': None, 'result': result})

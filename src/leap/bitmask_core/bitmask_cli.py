@@ -205,6 +205,8 @@ def send_command(cli):
     cmd = args.command
 
     if cmd == 'launch':
+        # XXX careful! Should see if the process in PID is running,
+        # avoid launching again.
         import commands
         commands.getoutput('bitmaskd')
         reactor.stop()
@@ -309,6 +311,12 @@ def send_command(cli):
 
         if subargs.status:
             data += ['status']
+
+        elif subargs.list_keys:
+            data += ['list_keys']
+
+        elif subargs.export_key:
+            data += ['export_keys']
 
         else:
             error('Use bitmask_cli keys --help to see available subcommands',

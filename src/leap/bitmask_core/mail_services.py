@@ -57,17 +57,19 @@ class HookableService(object):
 
     def register_hook(self, kind, trigger):
         if not hasattr(self, 'service_hooks'):
-            self.service_hooks = {}
+            self.service_hooks = defaultdict(list)
         log.msg("Registering hook %s->%s" % (kind, trigger))
-        self.service_hooks[kind] = trigger
+        self.service_hooks[kind].append(trigger)
 
     def get_sibling_service(self, kind):
         return self.parent.getServiceNamed(kind)
 
-    def get_hooked_service(self, kind):
+    def get_hooked_services(self, kind):
         hooks = self.service_hooks
         if kind in hooks:
-            return self.get_sibling_service(hooks[kind])
+            names = hooks[kind]
+            services = [self.get_sibling_service(name) for name in names]
+            return services
 
     def notify_hook(self, kind, **kw):
         if kind not in self.subscribed_to_hooks:
@@ -78,10 +80,9 @@ class HookableService(object):
 
 
 def notify_hooked_services(this_hook, this_service, **data):
-    hooked_service = this_service.get_hooked_service(this_hook)
-    if hooked_service:
-        hooked_service.notify_hook(
-            this_hook, **data)
+    hooked_services = this_service.get_hooked_services(this_hook)
+    for service in hooked_services:
+        service.notify_hook(this_hook, **data)
 
 
 def get_all_soledad_uuids():
@@ -204,14 +205,14 @@ class SoledadService(service.Service, HookableService):
             password = kw.get('password')
             uuid = kw.get('uuid')
             container = self._container
-            #print "on_passphrase_entry: New Soledad Instance: %s" % userid
+            log.msg("on_passphrase_entry: New Soledad Instance: %s" % userid)
             if not container.get_instance(userid):
                 container.add_instance(userid, password, uuid=uuid, token=None)
-
         else:
             log.msg('Service MX is not ready...')
 
     def hook_on_bonafide_auth(self, **kw):
+        print 'HOOKING ON BONAFIDE AUTH... (SOLEDAD)'
         userid = kw['username']
         provider = _get_provider_from_full_userid(userid)
         provider.callWhenReady(self._hook_on_bonafide_auth, provider, **kw)
@@ -225,10 +226,11 @@ class SoledadService(service.Service, HookableService):
 
             container = self._container
             if container.get_instance(userid):
-                #print "Passing a new SRP Token to Soledad: %s" % userid
+                log.msg("Passing a new SRP Token to Soledad: %s" % userid)
                 container.set_remote_auth_token(userid, token)
                 container.set_syncable(userid, True)
             else:
+                log.msg("Adding a new Soledad Instance: %s" % userid)
                 container.add_instance(
                     userid, password, uuid=uuid, token=token)
 
@@ -244,10 +246,12 @@ class KeymanagerContainer(Container):
         keymanager = self._create_keymanager_instance(
             userid, token, uuid, soledad)
 
-
-        d = self.maybe_generate_keys(keymanager, userid)
-        d.addCallback(self._on_keymanager_ready_cb)
+        d = self._get_or_generate_keys(keymanager, userid)
+        d.addCallback(self._on_keymanager_ready_cb, userid, soledad)
         return d
+
+    def set_remote_auth_token(self, userid, token):
+        self.get_instance(userid)._token = token
 
     def _on_keymanager_ready_cb(self, keymanager, userid, soledad):
         # TODO use onready-deferreds instead
@@ -258,44 +262,54 @@ class KeymanagerContainer(Container):
         data = {'userid': userid, 'soledad': soledad, 'keymanager': keymanager}
         notify_hooked_services(this_hook, self.service, **data)
 
-    def _maybe_generate_keys(self, keymanager, userid):
+    def _get_or_generate_keys(self, keymanager, userid):
 
         def if_not_found_generate(failure):
-            failure.trap(KeyNotFound)
             # TODO -------------- should ONLY generate if INITIAL_SYNC_DONE.
+            # ie: put callback on_soledad_first_sync_ready -----------------
             # --------------------------------------------------------------
-            log.msg("Key not found. Generating key for %s" % (userid,))
-            d = self._keymanager.gen_key(openpgp.OpenPGPKey)
+            failure.trap(KeyNotFound)
+            log.msg("Core: Key not found. Generating key for %s" % (userid,))
+            d = keymanager.gen_key(openpgp.OpenPGPKey)
             d.addCallbacks(send_key, log_key_error("generating"))
-            d.addCallback(lambda _: keymanager)
             return d
 
         def send_key(ignored):
+            # ----------------------------------------------------------------
+            # It might be the case that we have generated a key-pair
+            # but this hasn't been successfully uploaded. How do we know that?
+            # XXX Should this be a method of bonafide instead?
+            # -----------------------------------------------------------------
             d = keymanager.send_key(openpgp.OpenPGPKey)
             d.addCallbacks(
                 lambda _: log.msg(
                     "Key generated successfully for %s" % userid),
                 log_key_error("sending"))
+            return d
 
         def log_key_error(step):
-            def log_err(failure):
-                log.error("Error while %s key!", (step,))
-                log.error(failure)
+            def log_error(failure):
+                log.err("Error while %s key!" % step)
+                log.err(failure)
                 return failure
-            return log_err
+            return log_error
 
         d = keymanager.get_key(
             userid, openpgp.OpenPGPKey, private=True, fetch_remote=False)
         d.addErrback(if_not_found_generate)
+        d.addCallback(lambda _: keymanager)
         return d
 
     def _create_keymanager_instance(self, userid, token, uuid, soledad):
         user, provider = userid.split('@')
-
         nickserver_uri = self._get_nicknym_uri(provider)
 
         cert_path = _get_ca_cert_path(self._basedir, provider)
         api_uri = self._get_api_uri(provider)
+
+        if not token:
+            token = self.service.tokens.get(userid)
+            print 'got token from service:', token
 
         km_args = (userid, nickserver_uri, soledad)
         km_kwargs = {
@@ -320,7 +334,7 @@ class KeymanagerContainer(Container):
 
 class KeymanagerService(service.Service, HookableService):
 
-    subscribed_to_hooks = ('on_new_soledad_instance',)
+    subscribed_to_hooks = ('on_new_soledad_instance', 'on_bonafide_auth')
 
     def __init__(self, basedir='~/.config/leap'):
         service.Service.__init__(self)
@@ -330,6 +344,7 @@ class KeymanagerService(service.Service, HookableService):
         log.msg('Starting Keymanager Service')
         self._container = KeymanagerContainer(self._basedir)
         self._container.service = self
+        self.tokens = {}
         super(KeymanagerService, self).startService()
 
     # hooks
@@ -338,10 +353,38 @@ class KeymanagerService(service.Service, HookableService):
         container = self._container
         user = kw['user']
         token = kw['token']
-        uuid = ['uuid']
+        uuid = kw['uuid']
         soledad = kw['soledad']
         if not container.get_instance(user):
             container.add_instance(user, token, uuid, soledad)
+
+    def hook_on_bonafide_auth(self, **kw):
+        userid = kw['username']
+        provider = _get_provider_from_full_userid(userid)
+        provider.callWhenReady(self._hook_on_bonafide_auth, provider, **kw)
+
+    def _hook_on_bonafide_auth(self, provider, **kw):
+        if provider.offers_service('mx'):
+            userid = kw['username']
+            token = kw['token']
+
+            container = self._container
+            if container.get_instance(userid):
+                log.msg('Passing a new SRP Token to Keymanager: %s' % userid)
+                container.set_remote_auth_token(userid, token)
+            else:
+                log.msg('storing the keymanager token...')
+                self.tokens[userid] = token
+
+    # commands
+
+    def do_list_keys(self, userid):
+        km = self._container.get_instance(userid)
+        d = km.get_all_keys()
+        d.addCallback(
+            lambda keys: [
+                (key.uids, key.fingerprint) for key in keys])
+        return d
 
 
 class StandardMailService(service.MultiService, HookableService):
@@ -430,7 +473,6 @@ class StandardMailService(service.MultiService, HookableService):
         keymanager = kw['keymanager']
 
         # TODO --- only start instance if "autostart" is True.
-        #print "ADDING NEW KEYMANAGER INSTANCE FOR", userid
         self.startInstance(userid, soledad, keymanager)
 
     # commands
@@ -478,7 +520,7 @@ class IMAPService(service.Service):
         super(IMAPService, self).__init__()
 
     def startService(self):
-        #print "Starting IMAP Service"
+        log.msg('Starting IMAP Service')
         super(IMAPService, self).startService()
 
     def stopService(self):
@@ -505,7 +547,7 @@ class SMTPService(service.Service):
         super(SMTPService, self).__init__()
 
     def startService(self):
-        #print "Starting SMTP Service"
+        log.msg('Starting SMTP Service')
         super(SMTPService, self).startService()
 
     def stopService(self):
@@ -523,7 +565,7 @@ class IncomingMailService(service.Service):
         self._instances = {}
 
     def startService(self):
-        #print "Starting IncomingMail Service"
+        log.msg('Starting IncomingMail Service')
         super(IncomingMailService, self).startService()
 
     def stopService(self):

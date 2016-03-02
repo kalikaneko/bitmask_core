@@ -74,6 +74,7 @@ class BitmaskBackend(configurable.ConfigurableService):
         # (2) provider offers this service
         bf.register_hook('on_passphrase_entry', trigger='soledad')
         bf.register_hook('on_bonafide_auth', trigger='soledad')
+        bf.register_hook('on_bonafide_auth', trigger='keymanager')
 
     def init_soledad(self):
         service = mail_services.SoledadService
@@ -111,6 +112,7 @@ class BitmaskBackend(configurable.ConfigurableService):
             service = klass(*args, **kw)
             service.setName(label)
             service.setServiceParent(self)
+            return service
 
     # General commands for the BitmaskBackend Core Service
 
