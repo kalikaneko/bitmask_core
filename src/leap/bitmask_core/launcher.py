@@ -26,8 +26,9 @@ from leap import bitmask_core
 
 
 def run_bitmaskd():
+    # TODO --- configure where to put the logs... (get --logfile, --logdir
+    # from the bitmask_cli
     argv[1:] = [
-        # '-n',   #  this seems to be needed O_o
         '-y', join(dirname(bitmask_core.__file__), "bitmaskd.tac"),
         '--pidfile', '/tmp/bitmaskd.pid',
         '--logfile', '/tmp/bitmaskd.log',
