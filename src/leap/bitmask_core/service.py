@@ -69,26 +69,27 @@ class BitmaskBackend(configurable.ConfigurableService):
         bf = BonafideService(self.basedir)
         bf.setName("bonafide")
         bf.setServiceParent(self)
-        # TODO ---- these hooks should be activated only if 
+        # TODO ---- these hooks should be activated only if
         # (1) we have enabled that service
         # (2) provider offers this service
-        bf.register_hook('on_passphrase_entry', trigger='soledad')
-        bf.register_hook('on_bonafide_auth', trigger='soledad')
-        bf.register_hook('on_bonafide_auth', trigger='keymanager')
+        bf.register_hook('on_passphrase_entry', listener='soledad')
+        bf.register_hook('on_bonafide_auth', listener='soledad')
+        bf.register_hook('on_bonafide_auth', listener='keymanager')
 
     def init_soledad(self):
         service = mail_services.SoledadService
         sol = self._maybe_start_service(
             'soledad', service, self.basedir)
         if sol:
-            sol.register_hook('on_new_soledad_instance', trigger='keymanager')
+            sol.register_hook(
+                'on_new_soledad_instance', listener='keymanager')
 
     def init_keymanager(self):
         service = mail_services.KeymanagerService
         km = self._maybe_start_service(
             'keymanager', service, self.basedir)
         if km:
-            km.register_hook('on_new_keymanager_instance', trigger='mail')
+            km.register_hook('on_new_keymanager_instance', listener='mail')
 
     def init_mail(self):
         service = mail_services.StandardMailService

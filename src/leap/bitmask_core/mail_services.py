@@ -15,6 +15,7 @@ from twisted.internet import defer
 from twisted.python import log
 
 from leap.bonafide import config
+from leap.common.service_hooks import HookableService
 from leap.keymanager import KeyManager, openpgp
 from leap.keymanager.errors import KeyNotFound
 from leap.soledad.client.api import Soledad
@@ -40,59 +41,16 @@ class ImproperlyConfigured(Exception):
     pass
 
 
-class HookableService(object):
-
-    """
-    This service allows for other services to be notified
-    whenever a certain kind of hook is triggered.
-
-    During the service composition, one is expected to register
-    a kind of hook with the service that wants to react to the triggering of
-    the hook. On that service, the method "notify_hook" will be called,
-    which will be in turn dispatched to the method "hook_<name>".
-
-    This is a simplistic implementation for a PoC, we probably will move
-    this to another mechanism like leap.common.events, callbacks etc.
-    """
-
-    def register_hook(self, kind, trigger):
-        if not hasattr(self, 'service_hooks'):
-            self.service_hooks = defaultdict(list)
-        log.msg("Registering hook %s->%s" % (kind, trigger))
-        self.service_hooks[kind].append(trigger)
-
-    def get_sibling_service(self, kind):
-        return self.parent.getServiceNamed(kind)
-
-    def get_hooked_services(self, kind):
-        hooks = self.service_hooks
-        if kind in hooks:
-            names = hooks[kind]
-            services = [self.get_sibling_service(name) for name in names]
-            return services
-
-    def notify_hook(self, kind, **kw):
-        if kind not in self.subscribed_to_hooks:
-            raise RuntimeError(
-                "Tried to notify a hook this class is not "
-                "subscribed to" % self.__class__)
-        getattr(self, 'hook_' + kind)(**kw)
-
-
-def notify_hooked_services(this_hook, this_service, **data):
-    hooked_services = this_service.get_hooked_services(this_hook)
-    for service in hooked_services:
-        service.notify_hook(this_hook, **data)
-
-
 def get_all_soledad_uuids():
     return [os.path.split(p)[-1].split('.db')[0] for p in
             glob(os.path.expanduser('~/.config/leap/soledad/*.db'))]
+    # FIXME do not hardcode basedir
 
 
 class SoledadContainer(Container):
 
     def __init__(self, basedir='~/.config/leap'):
+        # FIXME do not hardcode basedir
         self._basedir = os.path.expanduser(basedir)
         self._usermap = UserMap()
         super(SoledadContainer, self).__init__()
@@ -119,10 +77,9 @@ class SoledadContainer(Container):
 
         self._instances[userid] = soledad
 
-        this_hook = 'on_new_soledad_instance'
         data = {'user': userid, 'uuid': uuid, 'token': token,
                 'soledad': soledad}
-        notify_hooked_services(this_hook, self.service, **data)
+        self.service.trigger_hook('on_new_soledad_instance', **data)
 
     def _create_soledad_instance(self, uuid, passphrase, basedir, server_url,
                                  cert_file, token):
@@ -258,9 +215,8 @@ class KeymanagerContainer(Container):
         self._instances[userid] = keymanager
 
         log.msg("Adding Keymanager instance for: %s" % userid)
-        this_hook = 'on_new_keymanager_instance'
         data = {'userid': userid, 'soledad': soledad, 'keymanager': keymanager}
-        notify_hooked_services(this_hook, self.service, **data)
+        self.trigger_hook('on_new_keymanager_instance', **data)
 
     def _get_or_generate_keys(self, keymanager, userid):
 
